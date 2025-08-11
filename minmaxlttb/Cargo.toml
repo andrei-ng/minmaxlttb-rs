@@ -1,0 +1,15 @@
+[package]
+name = "minmaxlttb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[dev-dependencies]
+lttb = "0.2"
+rand = "0.9"
+criterion = "0.7"
+
+[[bench]]
+name = "lttb_bench"
+harness = false

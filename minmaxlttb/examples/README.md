@@ -1,0 +1,1 @@
+Not an example per se, rather a simple comparison of this implementation with the [`lttb-rs`](https://github.com/jeromefroe/lttb-rs).

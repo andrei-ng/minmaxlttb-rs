@@ -1,0 +1,8 @@
+/target
+Cargo.lock
+
+output/*
+*.html
+
+# this asset file is too big and should be downloaded at first run
+examples/assets/household_power_consumption.txt

@@ -1,0 +1,9 @@
+[package]
+name = "example_timeseries"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+minmaxlttb = { path = "../../minmaxlttb" }
+plotly = "0.13"
+csv = "1.3"

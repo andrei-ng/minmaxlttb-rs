@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "minmaxlttb",
+    "examples/power",
+    "examples/timeseries",
+    "examples/minmax_vs_standard",
+    "examples/lttb_analysis",
+]
+exclude = ["target/*"]
+
+resolver = "2"
+
+[workspace.package]
+authors = ["Andrei Gherghescu andrei-ng@protonmail.com"]
+description = "Largest Triangle Three Buckets with MinMax"
+homepage = "https://github.com/andrei-ng/minmaxlttb"
+repository = "https://github.com/andrei-ng/minmaxlttb"
+keywords = ["lttb", "minmax", "downsampling", "visualization", "timeseries"]
+edition = "2021"
+license = "MIT"
