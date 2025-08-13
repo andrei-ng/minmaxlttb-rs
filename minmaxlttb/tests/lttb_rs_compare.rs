@@ -41,7 +41,10 @@ fn find_peaks_and_valleys(y: &[f64]) -> (Vec<usize>, Vec<usize>) {
     (peaks, valleys)
 }
 
-fn main() {
+#[test]
+fn compare_with_lttb_rs_crate() {
+    const EPS_TOL: f64 = 1e-8;
+
     let n = 1000;
     let threshold = 100;
     let series = generate_random_series(n);
@@ -49,13 +52,31 @@ fn main() {
     let local_impl = local_lttb(&series, threshold);
     let external_impl = external_lttb(to_datapoints(&series), threshold);
 
-    // Check length
-    let ok_len = local_impl.len() == external_impl.len();
-    // Check start/end
-    let ok_start = (local_impl[0].x() - external_impl[0].x).abs() < 1e-8
-        && (local_impl[0].y() - external_impl[0].y).abs() < 1e-8;
-    let ok_end = (local_impl.last().unwrap().x() - external_impl.last().unwrap().x).abs() < 1e-8
-        && (local_impl.last().unwrap().y() - external_impl.last().unwrap().y).abs() < 1e-8;
+    assert_eq!(
+        local_impl.len(),
+        external_impl.len(),
+        "downsampling result has different lengths"
+    );
+
+    assert!(
+        (local_impl[0].x() - external_impl[0].x).abs() < EPS_TOL,
+        "start point has different x values"
+    );
+
+    assert!(
+        (local_impl[0].y() - external_impl[0].y).abs() < EPS_TOL,
+        "start point has different y values"
+    );
+
+    assert!(
+        (local_impl.last().unwrap().x() - external_impl.last().unwrap().x).abs() < EPS_TOL,
+        "end point has different x values"
+    );
+
+    assert!(
+        (local_impl.last().unwrap().y() - external_impl.last().unwrap().y).abs() < EPS_TOL,
+        "end point has different y values"
+    );
 
     // Check peaks/valleys
     let local_y: Vec<f64> = local_impl.iter().map(|p| p.y()).collect();
@@ -64,30 +85,34 @@ fn main() {
     let (local_peaks, local_valleys) = find_peaks_and_valleys(&local_y);
     let (external_peaks, ext_valleys) = find_peaks_and_valleys(&external_y);
 
-    let ok_peaks = local_peaks == external_peaks;
-    let ok_valleys = local_valleys == ext_valleys;
+    assert_eq!(local_peaks, external_peaks, "peaks are different");
+    assert_eq!(local_valleys, ext_valleys, "valleys are different");
 
     println!("LTTB comparison (local vs lttb-rs):");
     println!(
-        "  Length: {} (local: {}, ext: {})",
-        ok_len,
+        "  Length OK: {} (local: {}, ext: {})",
+        local_impl.len() == external_impl.len(),
         local_impl.len(),
         external_impl.len()
     );
-    println!("  Start: {}", ok_start);
-    println!("  End: {}", ok_end);
     println!(
-        "  Peaks: {} \n   local: {:?}\n  extern: {:?}",
-        ok_peaks, local_peaks, external_peaks
+        "  Start point OK: {}",
+        (local_impl[0].x() - external_impl[0].x).abs() < EPS_TOL
     );
     println!(
-        "  Valleys: {}\n   local: {:?}\n  extern: {:?}",
-        ok_valleys, local_valleys, ext_valleys
+        "  End point OK: {}",
+        (local_impl.last().unwrap().x() - external_impl.last().unwrap().x).abs() < EPS_TOL
     );
-
-    if ok_len && ok_start && ok_end && ok_peaks && ok_valleys {
-        println!("SUCCESS: Both implementations match on all criteria.");
-    } else {
-        println!("FAILURE: Mismatch detected. See details above.");
-    }
+    println!(
+        "  Peaks OK: {} \n   local: {:?}\n  extern: {:?}",
+        local_peaks == external_peaks,
+        local_peaks,
+        external_peaks
+    );
+    println!(
+        "  Valleys OK: {}\n   local: {:?}\n  extern: {:?}",
+        local_valleys == ext_valleys,
+        local_valleys,
+        ext_valleys
+    );
 }
