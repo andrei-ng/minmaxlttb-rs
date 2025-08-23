@@ -245,11 +245,14 @@ pub fn preselect_extrema(points: &[Point], n_out: usize, ratio: usize) -> Vec<Po
 
     for bucket_idx in 1..n_out - 1 {
         let (bucket_start, bucket_end) = (bucket_bounds[bucket_idx], bucket_bounds[bucket_idx + 1]);
+        let partition_bounds = partition_bounds_by_count(bucket_end - bucket_start, num_partitions);
         for partition_idx in 0..num_partitions {
-            let (s, e) =
-                partition_bounds_by_count(bucket_end - bucket_start, num_partitions, partition_idx);
-            let start = bucket_start + s;
-            let end = bucket_start + e;
+            let (s_p, e_p) = (
+                partition_bounds[partition_idx],
+                partition_bounds[partition_idx + 1],
+            );
+            let start = bucket_start + s_p;
+            let end = bucket_start + e_p;
             // if the partition has only one point, no need to perform MinMax selection
             if end - start == 1 {
                 selected.push(points[start]);
@@ -365,12 +368,11 @@ pub fn bucket_bounds_by_count(n_in: usize, n_out: usize) -> Vec<usize> {
     bounds.push(0);
 
     for i in 0..n_out - 1 {
-        let next_limit = (1.0 + i as f64 * bucket_size) as usize;
-        bounds.push(next_limit);
+        let edge = (1.0 + i as f64 * bucket_size) as usize;
+        bounds.push(edge);
     }
 
     bounds.push(n_in);
-
     bounds
 }
 
@@ -390,30 +392,27 @@ pub fn bucket_bounds_by_count(n_in: usize, n_out: usize) -> Vec<usize> {
 
 // fn partition_bounds_by_range(points: &[Point], n_out: usize, bucket_index: usize) -> Vec<usize> {}
 
-/// Return the start and end indices of a partition of points as a tuple
+/// Return the edges of all partitions per each bucket
 ///
-/// `n_in` is the number of points in the original data
+/// `n_in` is the number of points in the current bucket to split into partitions
 /// `n_out` is the number of partitions to create
-/// `i_partition` is the index of the partition to find the start and end indices for
 ///
-/// Returns `(0, 0)` if either `n_in` or `n_out` is 0
+/// Returns an empty vector if either `n_in` or `n_out` is 0
 ///
-pub fn partition_bounds_by_count(n_in: usize, n_out: usize, i_partition: usize) -> (usize, usize) {
+pub fn partition_bounds_by_count(n_in: usize, n_out: usize) -> Vec<usize> {
     if (n_in == 0) || (n_out == 0) {
-        return (0, 0);
+        return vec![];
     }
 
     let size = n_in as f64 / n_out as f64;
 
-    let start = (i_partition as f64 * size) as usize;
-    let end = ((i_partition + 1) as f64 * size) as usize;
-
-    if i_partition == n_out - 1 {
-        // For the last bucket, cover all remaining points up to the last point
-        (start, n_in)
-    } else {
-        (start, end)
+    let mut bounds = Vec::with_capacity(n_out + 1);
+    for i in 0..n_out {
+        let edge = (i as f64 * size) as usize;
+        bounds.push(edge);
     }
+    bounds.push(n_in);
+    bounds
 }
 
 #[inline(always)]
@@ -642,23 +641,21 @@ mod tests {
     #[test]
     fn partition_bounds_by_count_check() {
         // Invalid inputs
-        assert_eq!(partition_bounds_by_count(0, 3, 0), (0, 0));
-        assert_eq!(partition_bounds_by_count(4, 0, 0), (0, 0));
+        assert_eq!(partition_bounds_by_count(0, 3), vec![]);
+        assert_eq!(partition_bounds_by_count(4, 0), vec![]);
 
         // 10 points, 3 partitions
         // Should split as: 4, 3, 3
-        assert_eq!(partition_bounds_by_count(10, 3, 0), (0, 3));
-        assert_eq!(partition_bounds_by_count(10, 3, 1), (3, 6));
-        assert_eq!(partition_bounds_by_count(10, 3, 2), (6, 10));
+        assert_eq!(partition_bounds_by_count(10, 3), vec![0, 3, 6, 10]);
 
         // 5 points, 2 partitions: 3, 2
-        assert_eq!(partition_bounds_by_count(5, 2, 0), (0, 2));
-        assert_eq!(partition_bounds_by_count(5, 2, 1), (2, 5));
+        assert_eq!(partition_bounds_by_count(5, 2), vec![0, 2, 5]);
 
         // 7 points, 7 partitions: all size 1
-        for i in 0..7 {
-            assert_eq!(partition_bounds_by_count(7, 7, i), (i, i + 1));
-        }
+        assert_eq!(
+            partition_bounds_by_count(7, 7),
+            vec![0, 1, 2, 3, 4, 5, 6, 7]
+        );
     }
 
     #[test]
