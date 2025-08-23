@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let standard = LttbBuilder::new()
         .threshold(threshold)
-        .method(minmaxlttb::LttbMethod::Standard)
+        .method(minmaxlttb::LttbMethod::Classic)
         .build()
         .downsample(&data.clone());
     let minmax = LttbBuilder::new()
@@ -130,10 +130,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Get min/max points from partitions for visualization
         for bucket_idx in 1..threshold - 1 {
             let (bucket_start, bucket_end) =
-                minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
+                minmaxlttb::bucket_bounds_by_count(data.len(), threshold);
             let num_partitions = args.ratio / 2;
             for partition_idx in 0..num_partitions {
-                let (s, e) = minmaxlttb::partition_boundaries(
+                let (s, e) = minmaxlttb::partition_bounds_by_count(
                     bucket_end - bucket_start,
                     num_partitions,
                     partition_idx,
@@ -196,7 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut y_bucket_lines: Vec<f64> = Vec::new();
             for bucket_idx in 1..threshold - 1 {
                 let (bucket_start, _bucket_end) =
-                    minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
+                    minmaxlttb::bucket_bounds_by_count(data.len(), threshold, bucket_idx);
                 let x_bucket_start = data[bucket_start].x();
                 x_bucket_lines.push(x_bucket_start);
                 x_bucket_lines.push(x_bucket_start);
@@ -229,10 +229,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut y_partition_lines: Vec<f64> = Vec::new();
             for bucket_idx in 1..threshold - 1 {
                 let (bucket_start, bucket_end) =
-                    minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
+                    minmaxlttb::bucket_bounds_by_count(data.len(), threshold, bucket_idx);
                 let num_partitions = args.ratio / 2;
                 for partition_idx in 0..num_partitions {
-                    let (s, e) = minmaxlttb::partition_boundaries(
+                    let (s, e) = minmaxlttb::partition_bounds_by_count(
                         bucket_end - bucket_start,
                         num_partitions,
                         partition_idx,

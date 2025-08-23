@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let standard = LttbBuilder::new()
         .threshold(threshold)
-        .method(minmaxlttb::LttbMethod::Standard)
+        .method(minmaxlttb::LttbMethod::Classic)
         .build()
         .downsample(&data.clone());
     let minmax_ratio_2 = LttbBuilder::new()
