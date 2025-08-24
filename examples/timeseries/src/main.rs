@@ -1,25 +1,50 @@
-use minmaxlttb::{LttbBuilder, Point};
-use plotly::{Layout, Plot, Scatter};
+use clap::Parser;
+use minmaxlttb::{LttbBuilder, LttbMethod, Point};
+use plotly::{common::DashType, Configuration, Layout, Plot, Scatter};
 use std::error::Error;
 use std::fs::File;
 
 const DATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/timeseries.csv");
 
+#[derive(Parser, Debug, Clone)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Method: classic or minmax
+    #[arg(short, long, default_value = "classic")]
+    method: String,
+
+    /// Ratio for MinMax (ignored for classic)
+    #[arg(short, long, default_value_t = 4)]
+    ratio: usize,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
     let original_data = load_timeseries_data()?;
 
     println!("Loaded timeseries data with {} points", original_data.len());
 
-    let thresholds = vec![100, 500, 1000, 2000];
+    let thresholds = vec![100, 250, 500, 1000, 2000];
     let mut downsampled_results = Vec::new();
     for &threshold in &thresholds {
-        let downsampled = LttbBuilder::new()
-            .threshold(threshold)
-            .build()
-            .downsample(&original_data);
+        let mut builder = LttbBuilder::new().threshold(threshold);
+        builder = match args.method.as_str() {
+            "minmax" => builder.method(LttbMethod::MinMax).ratio(args.ratio),
+            _ => builder.method(LttbMethod::Classic),
+        };
+        let downsampled = builder.build().downsample(&original_data).unwrap();
         println!(
-            "LTTB (threshold = {}): downsampled = {} points",
+            "{} (threshold = {}, ratio = {}): downsampled = {} points",
+            match args.method.as_str() {
+                "minmax" => "MinMax LTTB",
+                _ => "Classic LTTB",
+            },
             threshold,
+            if args.method == "minmax" {
+                args.ratio
+            } else {
+                0
+            },
             downsampled.len()
         );
         downsampled_results.push((threshold, downsampled));
@@ -30,22 +55,37 @@ fn main() -> Result<(), Box<dyn Error>> {
     let y_orig: Vec<f64> = original_data.iter().map(|p| p.y()).collect();
     plot.add_trace(
         Scatter::new(x_orig, y_orig)
-            .name("Original Data")
-            .line(plotly::common::Line::new().color("lightgray").width(1.0)),
+            .name(format!("Original Data ({})", original_data.len()))
+            .line(
+                plotly::common::Line::new()
+                    .color("black")
+                    .width(1.5)
+                    .dash(DashType::Dash),
+            ),
     );
-    let colors = ["red", "blue", "green", "purple"];
+    let colors = ["red", "blue", "green", "purple", "orange"];
     for (i, (threshold, downsampled)) in downsampled_results.iter().enumerate() {
         let x: Vec<f64> = downsampled.iter().map(|p| p.x()).collect();
         let y: Vec<f64> = downsampled.iter().map(|p| p.y()).collect();
         plot.add_trace(
             Scatter::new(x, y)
-                .name(format!("LTTB ({threshold})"))
-                .line(plotly::common::Line::new().color(colors[i]).width(2.0)),
+                .name(format!(
+                    "{} ({threshold})",
+                    if args.method == "minmax" {
+                        "MinMax"
+                    } else {
+                        "LTTB"
+                    }
+                ))
+                .line(plotly::common::Line::new().color(colors[i]).width(1.5)),
         );
     }
     let layout = Layout::new()
         .title(plotly::common::Title::with_text(
-            "LTTB Downsampling on timeseries.csv Data",
+            match args.method.as_str() {
+                "minmax" => "MinMax LTTB Downsampling on Timeseries Data",
+                _ => "LTTB Downsampling on Timeseries Data",
+            },
         ))
         .show_legend(true)
         .height(900)
@@ -71,14 +111,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                 ]),
         );
     plot.set_layout(layout);
-    // plot.set_configuration(Configuration::default().responsive(true).fill_frame(true));
+    plot.set_configuration(Configuration::default().responsive(true));
 
     let out_dir = "./output";
     std::fs::create_dir_all(out_dir).unwrap();
 
-    let out_path = format!("{out_dir}/lttb_timeseries_visualization.html");
+    let out_path = if args.method == "minmax" {
+        format!("{out_dir}/minmax_timeseries_visualization.html")
+    } else {
+        format!("{out_dir}/lttb_timeseries_visualization.html")
+    };
     plot.write_html(&out_path);
-    println!("Plot saved as {out_dir}/lttb_timeseries_visualization.html");
+    println!("Plot saved as {out_path}");
     plot.show_html(out_path);
 
     Ok(())

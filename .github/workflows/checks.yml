@@ -28,6 +28,7 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+      - run: cargo fmt -p crosscheck --check
 
   clippy:
     name: Clippy
@@ -38,6 +39,7 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy -- -D warnings 
+      - run: cargo clippy -p crosscheck -- -D warnings 
 
   semver:
     name: semver
