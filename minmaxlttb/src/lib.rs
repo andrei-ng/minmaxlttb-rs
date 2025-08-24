@@ -5,17 +5,18 @@
 //!
 //! ## Variants
 //!
-//! - **Standard LTTB**: Classic implementation of LTTB downsampling
+//! - **Classic LTTB**: Classic implementation of LTTB downsampling using buckets with equal number of points
+//! - **Standard LTTB**: Standard implementation of LTTB downsampling using buckets with equal x-axis range number of points
 //! - **MinMax LTTB**: MinMax variant that better preserves local minima and maxima
 //!
 //! ## Usage
 //!
 //! ```rust
-//! use minmaxlttb::{Point, Lttb, LttbBuilder, LttbMethod};
+//! use minmaxlttb::{Point, Lttb, LttbBuilder, LttbMethod, BinnigMethod};
 //!
 //! // Simple usage with convenience functions
 //! let points = vec![Point::new(0.0, 1.0), Point::new(1.0, 2.0), Point::new(2.0, 3.0)];
-//! let downsampled = minmaxlttb::lttb(&points, 2);
+//! let downsampled = minmaxlttb::lttb(&points, 2, BinnigMethod::Count);
 //!
 //! // Advanced usage with builder pattern
 //! let lttb = LttbBuilder::new()
@@ -39,6 +40,34 @@
 //! let result2 = lttb.downsample(&dataset2);
 //! ```
 
+use std::{error::Error, fmt};
+pub type Result<T> = std::result::Result<T, LttbError>;
+
+#[derive(Debug, PartialEq)]
+pub enum LttbError {
+    InvalidThreshold { n_in: usize, n_out: usize },
+    InvalidRatio { ratio: usize },
+    EmptyBucket,
+    InvalidBucket { start: usize, end: usize },
+}
+
+impl fmt::Display for LttbError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LttbError::InvalidThreshold { n_in, n_out } => write!(
+                f,
+                "threshold n_out={n_out} must be in >= 2 and <= n_in={n_in}"
+            ),
+            LttbError::InvalidRatio { ratio } => write!(f, "ratio must be >= 2 (got {ratio})"),
+            LttbError::EmptyBucket => write!(f, "cannot partition an empty bucket"),
+            LttbError::InvalidBucket { start, end } => {
+                write!(f, "computed invalid bucket limits at i={start}..={end}")
+            }
+        }
+    }
+}
+impl Error for LttbError {}
+
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct Point {
     pub(crate) x: f64,
@@ -61,9 +90,30 @@ impl Point {
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub enum LttbMethod {
+    /// Classic LTTB algorithm as described in the original paper
+    /// where the the bucket size is based on counting the number of points required, i.e., `BinningMethod::Count`.
+    /// [Downsampling Time Series for Visual Representation](https://skemman.is/bitstream/1946/15343/3/SS_MSthesis.pdf)
+    Classic,
+
+    /// Standard LTTB algorithm improves upon the classic algorithm by using
+    /// buckets that have equal x-axis range number of points, i.e., `BinningMethod::Range`.
     Standard,
+
+    /// MinMax LTTB algorithm as described in the original paper
+    /// [MinMaxLTTB: Leveraging MinMax-Preselection to Scale LTTB](https://arxiv.org/abs/2305.00332).
+    /// MinMax LTTB uses MinMax preselection over equal x-axis range partitions to choose extrema points for buckets.
+    /// It produces better visual results since it preserves better the original shape of the data.
     #[default]
     MinMax,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
+pub enum BinnigMethod {
+    /// Equal number of points in each bucket
+    #[default]
+    Count,
+    /// Equal x-axis range in each bucket
+    Range,
 }
 
 /// Builder for configuring LTTB downsampling parameters with MinMax LTTB as default
@@ -86,7 +136,7 @@ impl LttbBuilder {
 
     /// Set the ratio for MinMaxLTTB (only used by MinMax algorithm variant)
     pub fn ratio(mut self, ratio: usize) -> Self {
-        self.lttb.ratio = Some(ratio);
+        self.lttb.ratio = ratio;
         self
     }
 
@@ -103,96 +153,126 @@ impl LttbBuilder {
 }
 
 /// LTTB downsampler that can be used on a `Vec<Point>` to downsample it to the selected threshold
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Lttb {
     /// Number of points to downsample to
     threshold: usize,
     /// Method to use for downsampling
     method: LttbMethod,
     /// Ratio for MinMaxLTTB (only used by MinMax algorithm variant)
-    /// Default when not set is `DEFAULT_RATIO = 2`
-    ratio: Option<usize>,
+    /// Default is `DEFAULT_RATIO = 2`
+    ratio: usize,
+}
+
+impl Default for Lttb {
+    fn default() -> Self {
+        Self {
+            threshold: 0,
+            method: LttbMethod::MinMax,
+            ratio: Self::DEFAULT_RATIO,
+        }
+    }
 }
 
 impl Lttb {
     const DEFAULT_RATIO: usize = 2;
-    /// Downsample the given points to the target size `threshold`
-    pub fn downsample(&self, points: &[Point]) -> Vec<Point> {
+
+    /// Downsample the given points to the target size `threshold` and `ratio` provided by the builder
+    ///
+    /// `points` is the original set of points to downsample
+    ///
+    /// Returns the downsampled points or an LttbError
+    pub fn downsample(&self, points: &[Point]) -> Result<Vec<Point>> {
         match self.method {
-            LttbMethod::MinMax => {
-                let ratio = self.ratio.unwrap_or(Self::DEFAULT_RATIO);
-                minmaxlttb(points, self.threshold, ratio)
-            }
-            LttbMethod::Standard => lttb(points, self.threshold),
+            LttbMethod::MinMax => minmaxlttb(points, self.threshold, self.ratio),
+            LttbMethod::Classic => lttb(points, self.threshold, BinnigMethod::Count),
+            LttbMethod::Standard => lttb(points, self.threshold, BinnigMethod::Range),
         }
     }
 }
 
 /// Downsample using the MinMax algorithm.
+///
 /// This algorithm is a variant of the LTTB algorithm that uses the MinMax pre-selection to choose extrema points for buckets.
 /// It produces better visual results since it preserves better the original shape of the data.
 /// `points` is the original set of points to downsample
 /// `n_out` is the number of points to downsample to (also known as the threshold)
 /// `ratio` is the number of extrema points to preselect from each `bucket` before running the LTTB algorithm
 //
-/// Returns the original data if any of the following holds true:
-/// - `n_out` is greater than or equal to the number of input points
-/// - `n_out` is less than 3
-/// - `ratio` is less than 2
-///  
 /// Note: Select `ratio` with care. When `ratio` approaches the bucket size (`points.len()/n_out`),
 /// partitions shrink to 1–2 points. This causes all points in a bucket to be selected,
 /// making MinMax equivalent to standard LTTB and render the maxima/minima preselection step void.
-pub fn minmaxlttb(points: &[Point], n_out: usize, ratio: usize) -> Vec<Point> {
-    if n_out >= points.len() || n_out <= 2 || ratio < 2 {
-        return points.to_vec();
+pub fn minmaxlttb(points: &[Point], n_out: usize, ratio: usize) -> Result<Vec<Point>> {
+    debug_assert!(
+        points.windows(2).all(|w| w[0].x() <= w[1].x()),
+        "points must be sorted by x"
+    );
+    if n_out >= points.len() || n_out < 3 {
+        return Err(LttbError::InvalidThreshold {
+            n_in: points.len(),
+            n_out,
+        });
     }
 
-    let result = preselect_extrema(points, n_out, ratio);
+    if ratio < 2 {
+        return Err(LttbError::InvalidRatio { ratio });
+    }
 
-    lttb(&result, n_out)
+    // Apply MinMax preselect only when bucket size > ratio
+    let bucket_size = points.len() / n_out;
+    if bucket_size > ratio {
+        let selected = extrema_selection(points, n_out, ratio)?;
+        lttb(&selected, n_out, BinnigMethod::Count)
+    } else {
+        lttb(points, n_out, BinnigMethod::Count)
+    }
 }
 
-/// Downsample using the standard LTTB algorithm.
+/// Downsample using the LTTB algorithm with a given binnig method.
+///
 /// `points` is the original set of points to downsample
 /// `n_out` is the number of points to downsample to (also known as the threshold)
-///
-/// Returns the original data if any of the following holds true:
-/// - `n_out` is greater than or equal to the number of input points
-/// - `n_out` is less than 3
-///
-/// If `n_out` is greater than the number of points in the original data or less than 3, the function will return the original data.
-pub fn lttb(points: &[Point], n_out: usize) -> Vec<Point> {
-    if n_out >= points.len() || n_out <= 2 {
-        return points.to_vec();
+/// `binning_method` is the method to use for binning the points, see `BinnigMethod` for more details
+pub fn lttb(points: &[Point], n_out: usize, binning_method: BinnigMethod) -> Result<Vec<Point>> {
+    debug_assert!(
+        points.windows(2).all(|w| w[0].x() <= w[1].x()),
+        "points must be sorted by x"
+    );
+    if n_out >= points.len() || n_out < 3 {
+        return Err(LttbError::InvalidThreshold {
+            n_in: points.len(),
+            n_out,
+        });
     }
 
+    let bucket_bounds = match binning_method {
+        BinnigMethod::Count => buckets_limits_by_count(points, n_out)?,
+        BinnigMethod::Range => bucket_limits_by_range(points, n_out)?,
+    };
+
     let mut downsampled = Vec::with_capacity(n_out);
+    downsampled.push(points[0]); // Push first point
 
-    // Push first point
-    downsampled.push(points[0]);
+    // Iterate over all the buckets except the first and last
+    for i in 1..n_out - 1 {
+        let (start, end) = (bucket_bounds[i], bucket_bounds[i + 1]);
+        let (next_s, next_e) = (bucket_bounds[i + 1], bucket_bounds[i + 2]);
 
-    for bucket_idx in 1..n_out - 1 {
-        let first_vertex = downsampled[bucket_idx - 1];
-        let third_vertex = match third_vertex(points, n_out, bucket_idx) {
-            Some(vertex) => vertex,
-            None => break, // We have reached the end, no more buckets
-        };
+        let first_vertex = downsampled[i - 1];
+        let third_vertex =
+            mean_point_bucket(&points[next_s..next_e]).ok_or(LttbError::InvalidBucket {
+                start: next_s,
+                end: next_e,
+            })?;
 
-        let best_vertex =
-            match max_area_vertex(points, n_out, bucket_idx, first_vertex, third_vertex) {
-                Some(vertex) => vertex,
-                None => {
-                    // most likely we have reached the end
-                    break;
-                }
-            };
+        let best_vertex = vertex_by_max_area(&points[start..end], first_vertex, third_vertex)
+            .ok_or(LttbError::InvalidBucket { start, end })?;
 
         downsampled.push(best_vertex);
     }
     // Push last point
     downsampled.push(points[points.len() - 1]);
-    downsampled
+    Ok(downsampled)
 }
 
 /// Preselect the extrema points for each bucket using the MinMax algorithm
@@ -200,93 +280,49 @@ pub fn lttb(points: &[Point], n_out: usize) -> Vec<Point> {
 /// `points` is the original set of points to downsample
 /// `n_out` is the number of points to downsample to (also known as the threshold)
 /// `ratio` is the number of extrema points to preselect from each `bucket` before running the LTTB algorithm
-pub fn preselect_extrema(points: &[Point], n_out: usize, ratio: usize) -> Vec<Point> {
-    if n_out >= points.len() || n_out <= 2 || ratio < 2 {
-        return points.to_vec();
+fn extrema_selection(points: &[Point], n_out: usize, ratio: usize) -> Result<Vec<Point>> {
+    if n_out >= points.len() || n_out < 3 {
+        return Err(LttbError::InvalidThreshold {
+            n_in: points.len(),
+            n_out,
+        });
     }
 
-    const NUM_ENDS: usize = 2;
+    if ratio < 2 {
+        return Err(LttbError::InvalidRatio { ratio });
+    }
+
+    // Global equidistant x-axis partitions across inner range [1..n-1]
+    // Number of partitions equals (n_out * ratio) / 2, selecting 2 points per partition
     const NUM_PTS_PER_PARTITION: usize = 2;
+    let num_partitions = n_out.saturating_mul(ratio / NUM_PTS_PER_PARTITION);
 
-    let mut selected = Vec::with_capacity((n_out - NUM_ENDS) * ratio + NUM_ENDS);
-
-    let num_partitions = ratio / NUM_PTS_PER_PARTITION;
-
-    // Push first point
+    let n_in = points.len();
+    let mut selected: Vec<Point> = Vec::with_capacity(n_out * ratio);
     selected.push(points[0]);
-
-    for bucket_idx in 1..n_out - 1 {
-        let (bucket_start, bucket_end) = bucket_boundaries(points.len(), n_out, bucket_idx);
-        for partition_idx in 0..num_partitions {
-            let (s, e) =
-                partition_boundaries(bucket_end - bucket_start, num_partitions, partition_idx);
-            let start = bucket_start + s;
-            let end = bucket_start + e;
-            // if the partition has only one point, no need to perform MinMax selection
-            if end - start == 1 {
-                selected.push(points[start]);
-            } else {
-                // perform MinMax selection on the partition
-                let (min_p, max_p) = minmax_partition(&points[start..end]);
-                if min_p.x < max_p.x {
-                    selected.push(min_p);
-                    selected.push(max_p);
-                } else {
-                    selected.push(max_p);
-                    selected.push(min_p);
-                }
-            }
-        }
+    let bounds = partition_bounds_by_range(&points[1..(n_in - 1)], 1, num_partitions)?;
+    for i in 0..num_partitions {
+        let start = bounds[i];
+        let end = bounds[i + 1];
+        selected.extend(find_minmax(&points[start..end]));
     }
-    // Push last point
-    selected.push(points[points.len() - 1]);
-    selected
-}
-
-/// Returns the third (next) triangle vertex, computed as the mean of the points in the right-adjacent bucket.
-/// For the last bucket (which has no right neighbor), returns `None`.
-pub fn third_vertex(points: &[Point], n_out: usize, bucket_index: usize) -> Option<Point> {
-    if bucket_index < n_out - 1 {
-        let next_bucket = bucket_index + 1;
-        let (start, end) = bucket_boundaries(points.len(), n_out, next_bucket);
-        mean_point_bucket(&points[start..end])
-    } else {
-        None // For the last bucket, there is no next candidate
-    }
+    selected.push(points[n_in - 1]);
+    Ok(selected)
 }
 
 /// Returns the best candidate vertex for the current bucket by maximizing the area of the triangle formed by
 /// the current bucket's points, the left bucket's selected point and the right adjacent bucket's mean point.
-fn max_area_vertex(
-    points: &[Point],
-    n_out: usize,
-    bucket_index: usize,
-    first_vertex: Point,
-    next_vertex: Point,
-) -> Option<Point> {
-    if bucket_index < n_out - 1 {
-        let (start, end) = bucket_boundaries(points.len(), n_out, bucket_index);
-        // Start and end should never be the same as this will result in an empty bucket
-        // This should never happen in practice since this function is only called
-        // from higher level functions that checks the necessary conditions for
-        // `n_out` to be higher than the number of original data points, thus making
-        // sure that the bucket sizes are always non-zero
-        debug_assert!(start != end, "buckets should be non-empty");
-
-        let mut max_area = 0.0;
-        let mut best_candidate = None;
-
-        for p in points[start..end].iter() {
-            let area = triangle_area(&first_vertex, p, &next_vertex);
-            if area >= max_area {
-                max_area = area;
-                best_candidate = Some(*p);
-            }
+fn vertex_by_max_area(points: &[Point], first_vertex: Point, next_vertex: Point) -> Option<Point> {
+    let mut max_area = f64::MIN;
+    let mut best_candidate = None;
+    for p in points.iter() {
+        let area = triangle_area(&first_vertex, p, &next_vertex);
+        if area >= max_area {
+            max_area = area;
+            best_candidate = Some(*p);
         }
-        best_candidate
-    } else {
-        points.last().cloned()
     }
+    best_candidate
 }
 
 /// Returns the mean `Point` for a list of points by computing the average of the x and y coordinates
@@ -296,68 +332,61 @@ pub fn mean_point_bucket(points: &[Point]) -> Option<Point> {
         return None;
     }
 
-    let mut mean_x = 0.0;
-    let mut mean_y = 0.0;
-
+    let mut mean_p = Point::new(0.0, 0.0);
     for p in points {
-        mean_x += p.x;
-        mean_y += p.y;
+        mean_p.x += p.x;
+        mean_p.y += p.y;
     }
     Some(Point {
-        x: mean_x / points.len() as f64,
-        y: mean_y / points.len() as f64,
+        x: mean_p.x / points.len() as f64,
+        y: mean_p.y / points.len() as f64,
     })
 }
 
 /// Returns the MIN and MAX points in a partition of points as a tuple
-/// where the MIN point has the lowest y value and the MAX point has the highest y value.
+/// where the MIN point has the lowest Y value and the MAX point has the highest Y value.
 ///
-/// Returns `(points[0], points[0])` if the partition has only one point
-///
-/// Panics if the partition is empty.
-pub fn minmax_partition(points: &[Point]) -> (Point, Point) {
-    debug_assert!(
-        !points.is_empty(),
-        "each partition must have at least one point"
-    );
-    if points.len() == 1 {
-        return (points[0], points[0]);
+/// Returns `points` if the partition has at most 2 points
+/// Returns `[min_p, max_p]` if the partition has more than 2 points
+pub fn find_minmax(points: &[Point]) -> Vec<Point> {
+    let mut result = Vec::with_capacity(2);
+    if points.len() <= 2 {
+        return points.to_vec();
     }
 
     let mut min_p = points[0];
-    // use second point as max_p to avoid returning both min and max the same point
-    // in case all points have the same y value
-    let mut max_p = points[1];
+    let mut max_p = points[0];
 
     for p in points.iter() {
         if p.y < min_p.y {
             min_p = *p;
         }
-        if p.y > max_p.y {
+        if p.y >= max_p.y {
             max_p = *p;
         }
     }
-    (min_p, max_p)
+    if min_p.x < max_p.x {
+        result.push(min_p);
+        result.push(max_p);
+    } else {
+        result.push(max_p);
+        result.push(min_p);
+    }
+    result
 }
 
-/// Returns the start and end indices of a bucket using floating-point arithmetic
+/// Returns a vector of all the start and end indices of all the buckets using floating-point arithmetic
+/// such that the number of points in each bucket is equal (by count)
 ///
-/// `n_in` is the number of points in the original data
-/// `n_out` is the number of partitions to create
-/// `i_bucket` is the index of the bucket to find the start and end indices for
+/// `points` is the original set of points to downsample
+/// `n_out` is the number of points to downsample to (also known as the threshold)
 ///
 /// The first bucket is always the first point in the original data.
 /// The last bucket is always the last point in the original data.
-///
-/// Returns `(0, 1)` if `i_bucket` is 0.
-/// Returns `(n_in - 1, n_in)` if `i_bucket` is `n_out - 1`.
-pub fn bucket_boundaries(n_in: usize, n_out: usize, i_bucket: usize) -> (usize, usize) {
-    if i_bucket == 0 {
-        return (0, 1);
-    }
-
-    if i_bucket >= n_out - 1 {
-        return (n_in - 1, n_in);
+pub fn buckets_limits_by_count(points: &[Point], n_out: usize) -> Result<Vec<usize>> {
+    let n_in = points.len();
+    if n_out >= n_in || n_out <= 2 {
+        return Err(LttbError::InvalidThreshold { n_in, n_out });
     }
 
     // Exclude the end points from bucket calculations
@@ -365,41 +394,128 @@ pub fn bucket_boundaries(n_in: usize, n_out: usize, i_bucket: usize) -> (usize, 
     let n_out_exclusive = (n_out - 2) as f64;
     let bucket_size = n_in_exclusive / n_out_exclusive;
 
-    let start = ((i_bucket - 1) as f64 * bucket_size + 1.0) as usize;
-    let end = (i_bucket as f64 * bucket_size + 1.0) as usize;
+    let mut bounds = Vec::with_capacity(n_out + 1);
 
-    if i_bucket == n_out - 2 {
-        // For the penultimate bucket, cover all remaining points up to the last point
-        (start, n_in - 1)
-    } else {
-        (start, end)
+    bounds.push(0);
+    for i in 0..n_out - 1 {
+        let edge = (1.0 + i as f64 * bucket_size) as usize;
+        bounds.push(edge);
     }
+    bounds.push(n_in);
+    Ok(bounds)
 }
 
-/// Return the start and end indices of a partition of points as a tuple
+/// Return the edges of all partitions per each bucket using floating-point arithmetic
+/// such that the number of points in each partition is equal (by count)
 ///
-/// `n_in` is the number of points in the original data
-/// `n_out` is the number of partitions to create
-/// `i_partition` is the index of the partition to find the start and end indices for
+/// `start` is the start index of the current bucket
+/// `end` is the end index of the current bucket
+/// `n` is the number of partitions to create
 ///
-/// Returns `(0, 0)` if either `n_in` or `n_out` is 0
+/// Returns an [start, end] if n = 0
 ///
-pub fn partition_boundaries(n_in: usize, n_out: usize, i_partition: usize) -> (usize, usize) {
-    if (n_in == 0) || (n_out == 0) {
-        return (0, 0);
+pub fn partition_bounds_by_count(start: usize, end: usize, n: usize) -> Result<Vec<usize>> {
+    if start >= end {
+        return Err(LttbError::InvalidBucket { start, end });
     }
 
-    let size = n_in as f64 / n_out as f64;
-
-    let start = (i_partition as f64 * size) as usize;
-    let end = ((i_partition + 1) as f64 * size) as usize;
-
-    if i_partition == n_out - 1 {
-        // For the last bucket, cover all remaining points up to the last point
-        (start, n_in)
-    } else {
-        (start, end)
+    if n == 0 {
+        return Ok(vec![start, end]);
     }
+
+    let size = (end - start) as f64 / n as f64;
+
+    let mut bounds = Vec::with_capacity(n + 1);
+    for i in 0..n {
+        let edge = (i as f64 * size) as usize;
+        bounds.push(start + edge);
+    }
+    bounds.push(end);
+    Ok(bounds)
+}
+
+/// Returns a vector of all the start and end indices of all the buckets
+/// such that the x-axis range of each bucket is equal
+///
+/// `points` is the original set of points to downsample
+/// `n_out` is the number of points to downsample to (also known as the threshold)
+///
+/// The first bucket is always the first point in the original data.
+/// The last bucket is always the last point in the original data.
+pub fn bucket_limits_by_range(points: &[Point], n_out: usize) -> Result<Vec<usize>> {
+    let n_in = points.len();
+    if n_out >= n_in || n_out <= 2 {
+        return Err(LttbError::InvalidThreshold { n_in, n_out });
+    }
+
+    // Exclude the end points from bucket calculations
+    let first_point: usize = 1;
+    let last_point: usize = n_in - 2;
+    let n_out_exclusive = (n_out - 2) as f64;
+    let start_x = points[first_point].x();
+    let end_x = points[last_point].x();
+
+    let step_size = ((end_x - start_x) / n_out_exclusive).abs();
+    let mut bounds = Vec::with_capacity(n_out + 1);
+
+    bounds.push(0);
+    bounds.push(1);
+
+    let mut idx = 1;
+    let mut prev = 1;
+    for i in 1..n_out - 2 {
+        let edge_x = start_x + step_size * i as f64;
+        while idx < n_in - 1 && points[idx].x() < edge_x {
+            idx += 1;
+        }
+        // Make sure we don't duplicate boundaries and enforce strictly increasing edges
+        if idx <= prev {
+            idx = (prev + 1).min(n_in - 2);
+        }
+        bounds.push(idx);
+        prev = idx;
+    }
+    bounds.push(n_in - 1);
+    bounds.push(n_in);
+    Ok(bounds)
+}
+
+pub fn partition_bounds_by_range(points: &[Point], start: usize, n: usize) -> Result<Vec<usize>> {
+    if n == 0 {
+        return Ok(vec![start, start + points.len()]);
+    }
+    if points.is_empty() {
+        return Err(LttbError::EmptyBucket);
+    }
+
+    let start_x = points[0].x();
+    let end_x = points[points.len() - 1].x();
+
+    let step_size = ((end_x - start_x) / n as f64).abs();
+
+    // n partitions => n+1 boundaries: [start, inner..., end]
+    let mut bounds = Vec::with_capacity(n + 1);
+    bounds.push(start);
+
+    let mut idx = 0; // index in slice
+    let mut prev_abs = start; // previous boundary (absolute index)
+    for i in 1..n {
+        let edge_x = start_x + step_size * i as f64;
+        while idx < points.len() && points[idx].x() < edge_x {
+            idx += 1;
+        }
+        // Make sure we don't duplicate boundaries and enforce strictly increasing edges
+        let mut abs = start + idx;
+        if abs <= prev_abs {
+            abs = (prev_abs + 1).min(start + points.len() - 1);
+            idx = abs - start;
+        }
+        bounds.push(abs);
+        prev_abs = abs;
+    }
+
+    bounds.push(start + points.len());
+    Ok(bounds)
 }
 
 #[inline(always)]
@@ -418,6 +534,13 @@ fn triangle_area(p1: &Point, p2: &Point, p3: &Point) -> f64 {
 mod tests {
     use super::*;
 
+    #[inline(always)]
+    /// Helper method to get the edges of a bucket given an index
+    fn bucket_edges_by_count(data: &[Point], n_out: usize, bucket_index: usize) -> (usize, usize) {
+        let bucket_bounds = buckets_limits_by_count(data, n_out).unwrap();
+        (bucket_bounds[bucket_index], bucket_bounds[bucket_index + 1])
+    }
+
     #[test]
     fn threshold_conditions() {
         let data = vec![
@@ -427,12 +550,18 @@ mod tests {
             Point::new(3.0, 3.0),
         ];
         let n_out = 5;
-        let result = lttb(&data, n_out);
-        assert_eq!(result, data);
+        let result = lttb(&data, n_out, BinnigMethod::Count);
+        assert_eq!(
+            result,
+            Err(LttbError::InvalidThreshold { n_in: 4, n_out: 5 })
+        );
 
         let n_out = 2;
-        let result = lttb(&data, n_out);
-        assert_eq!(result, data);
+        let result = lttb(&data, n_out, BinnigMethod::Count);
+        assert_eq!(
+            result,
+            Err(LttbError::InvalidThreshold { n_in: 4, n_out: 2 })
+        );
     }
 
     #[test]
@@ -446,6 +575,8 @@ mod tests {
             Point::new(3.0, 7.0),
         ];
 
+        assert!(mean_point_bucket(&data[1..1]).is_none());
+
         assert_eq!(
             mean_point_bucket(&data).unwrap(),
             Point::new(6.0 / 4.0, 22.0 / 4.0)
@@ -454,6 +585,9 @@ mod tests {
 
     #[test]
     fn minmax_partition_check() {
+        let data = vec![Point::new(0.0, 4.0)];
+        assert_eq!(find_minmax(&data), vec![Point::new(0.0, 4.0)]);
+
         let data = vec![
             Point::new(0.0, 4.0),
             Point::new(1.0, 5.0),
@@ -461,9 +595,9 @@ mod tests {
             Point::new(3.0, 6.0),
         ];
 
-        let (min_p, max_p) = minmax_partition(&data);
-        assert_eq!(min_p, Point::new(0.0, 4.0));
-        assert_eq!(max_p, Point::new(2.0, 7.0));
+        assert_eq!(find_minmax(&[]), vec![]);
+        assert_eq!(find_minmax(&data[0..0]), vec![]);
+        assert_eq!(find_minmax(&data[0..1]), vec![Point::new(0.0, 4.0)]);
 
         // Reverse order of points
         let data = vec![
@@ -473,9 +607,10 @@ mod tests {
             Point::new(3.0, 3.0),
         ];
 
-        let (min_p, max_p) = minmax_partition(&data);
-        assert_eq!(min_p, Point::new(3.0, 3.0));
-        assert_eq!(max_p, Point::new(0.0, 6.0));
+        assert_eq!(
+            find_minmax(&data),
+            vec![Point::new(0.0, 6.0), Point::new(3.0, 3.0)]
+        );
 
         let data = vec![
             Point::new(0.0, 4.0),
@@ -484,30 +619,33 @@ mod tests {
             Point::new(3.0, 4.0),
         ];
 
-        let (min_p, max_p) = minmax_partition(&data);
-        assert_eq!(min_p, Point::new(0.0, 4.0));
-        assert_eq!(max_p, Point::new(1.0, 4.0));
-
-        let data = vec![Point::new(0.0, 4.0)];
-
-        let (min_p, max_p) = minmax_partition(&data);
-        assert_eq!(min_p, Point::new(0.0, 4.0));
-        assert_eq!(max_p, Point::new(0.0, 4.0));
+        assert_eq!(
+            find_minmax(&data),
+            vec![Point::new(0.0, 4.0), Point::new(3.0, 4.0)]
+        );
     }
 
     #[test]
-    fn bucket_boundaries_check() {
-        let data_len = 6;
-        let n_out = 4;
+    fn right_vertex_for_first_bucket() {
+        struct TestCase {
+            name: &'static str,
+            bucket_index: usize,
+            expected_vertex: Option<Point>,
+        }
 
-        assert_eq!(bucket_boundaries(data_len, n_out, 0), (0, 1));
-        assert_eq!(bucket_boundaries(data_len, n_out, 1), (1, 3));
-        assert_eq!(bucket_boundaries(data_len, n_out, 2), (3, 5));
-        assert_eq!(bucket_boundaries(data_len, n_out, 3), (5, 6));
-    }
+        let cases = [
+            TestCase {
+                name: "Right vertex for 1st bucket",
+                bucket_index: 0,
+                expected_vertex: Some(Point::new(1.5, 2.5)), // Should return the average of the second bucket
+            },
+            TestCase {
+                name: "Right vertex for 2nd bucket",
+                bucket_index: 1,
+                expected_vertex: Some(Point::new(3.0, 4.0)), // Should return the last point
+            },
+        ];
 
-    #[test]
-    fn next_candidate_first_bucket() {
         let data = vec![
             Point::new(0.0, 1.0),
             Point::new(1.0, 2.0),
@@ -515,44 +653,16 @@ mod tests {
             Point::new(3.0, 4.0),
         ];
         let n_out = 3;
-        let bucket_index = 0; // First bucket
 
-        let result = third_vertex(&data, n_out, bucket_index).unwrap();
-        assert_eq!(result, Point::new(1.5, 2.5)); // Should return the average of the second bucket
+        for c in cases {
+            let (next_start, next_end) = bucket_edges_by_count(&data, n_out, c.bucket_index + 1);
+            let result = mean_point_bucket(&data[next_start..next_end]);
+            assert_eq!(result, c.expected_vertex, "test case: {}", c.name,);
+        }
     }
 
     #[test]
-    fn next_candidate_second_bucket() {
-        let data = vec![
-            Point::new(0.0, 1.0),
-            Point::new(1.0, 2.0),
-            Point::new(2.0, 3.0),
-            Point::new(3.0, 4.0),
-        ];
-        let n_out = 3;
-        let bucket_index = 1;
-
-        let result = third_vertex(&data, n_out, bucket_index).unwrap();
-        assert_eq!(result, Point::new(3.0, 4.0)); // Should return the last point
-    }
-
-    #[test]
-    fn next_candidate_last_bucket() {
-        let data = vec![
-            Point::new(0.0, 1.0),
-            Point::new(1.0, 2.0),
-            Point::new(2.0, 3.0),
-            Point::new(3.0, 4.0),
-        ];
-        let n_out = 3;
-        let bucket_index = 2;
-
-        let result = third_vertex(&data, n_out, bucket_index);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn next_candidate_middle_bucket() {
+    fn right_vertex_for_middle_bucket() {
         let data = vec![
             Point::new(0.0, 1.0), // bucket 0
             Point::new(1.0, 2.0), // bucket 1 - start
@@ -564,28 +674,31 @@ mod tests {
         let n_out = 4;
         let bucket_index = 1; // Middle bucket
 
-        let result = third_vertex(&data, n_out, bucket_index).unwrap();
+        let (next_start, next_end) = bucket_edges_by_count(&data, n_out, bucket_index + 1);
+        let result = mean_point_bucket(&data[next_start..next_end]);
         // Should return mean of bucket 2: (3.0+4.0)/2, (4.0+5.0)/2
-        assert_eq!(result, Point::new(3.5, 4.5));
+        assert_eq!(result, Some(Point::new(3.5, 4.5)));
     }
 
     #[test]
-    fn next_candidate_penultimate_bucket() {
+    fn right_vertex_for_penultimate_bucket() {
         let data = vec![
             Point::new(0.0, 1.0), // bucket 0
             Point::new(1.0, 2.0), // bucket 1
-            Point::new(2.0, 3.0), // bucket 2
-            Point::new(3.0, 4.0), // bucket 3
+            Point::new(2.0, 3.0), // bucket 1
+            Point::new(3.0, 4.0), // bucket 2
         ];
         let n_out = 3;
-        let bucket_index = n_out - 2; // Penultimate bucket (bucket 1)
+        let bucket_index = n_out - 2; // Penultimate bucket is bucket 1
 
-        let result = third_vertex(&data, n_out, bucket_index).unwrap();
-        assert_eq!(result, Point::new(3.0, 4.0)); // Should return the last point
+        let (next_start, next_end) = bucket_edges_by_count(&data, n_out, bucket_index + 1);
+        let result = mean_point_bucket(&data[next_start..next_end]);
+
+        assert_eq!(result, Some(Point::new(3.0, 4.0))); // Should return the last point
     }
 
     #[test]
-    fn best_candidate_middle_bucket() {
+    fn best_candidate_bucket() {
         let data = vec![
             Point::new(0.0, 0.0), // bucket 0
             Point::new(1.0, 1.0), // bucket 1 - candidate 1
@@ -594,54 +707,44 @@ mod tests {
         ];
         let n_out = 3;
         let bucket_index = 1;
-        let previous = Point::new(0.0, 0.0);
-        let next = Point::new(2.0, 0.0);
+        let first = data[0];
+        let third = data[3];
 
-        let result = max_area_vertex(&data, n_out, bucket_index, previous, next).unwrap();
-        assert_eq!(result, Point::new(1.0, 2.0)); // Should pick the point with higher triangle area
+        let (start, end) = bucket_edges_by_count(&data, n_out, bucket_index);
+
+        let result = vertex_by_max_area(&data[start..end], first, third);
+        assert_eq!(result, Some(Point::new(1.0, 2.0))); // Should pick the point with higher triangle area
     }
 
     #[test]
-    fn best_candidate_last_bucket() {
-        let data = vec![
-            Point::new(0.0, 0.0),
-            Point::new(1.0, 1.0),
-            Point::new(2.0, 2.0),
-        ];
-        let n_out = 3;
-        let bucket_index = 2; // Last bucket
-        let previous = Point::new(1.0, 1.0);
-        let dummy_next = Point::new(0.0, 0.0); // Not used for last bucket
-
-        let result = max_area_vertex(&data, n_out, bucket_index, previous, dummy_next).unwrap();
-        assert_eq!(result, Point::new(2.0, 2.0)); // Should return the last point
-    }
-
-    #[test]
-    fn partition_boundaries_check() {
+    fn partition_bounds_by_count_check() {
         // Invalid inputs
-        assert_eq!(partition_boundaries(0, 3, 0), (0, 0));
-        assert_eq!(partition_boundaries(4, 0, 0), (0, 0));
+        assert_eq!(
+            partition_bounds_by_count(0, 0, 3),
+            Err(LttbError::InvalidBucket { start: 0, end: 0 })
+        );
+        assert_eq!(
+            partition_bounds_by_count(4, 0, 3),
+            Err(LttbError::InvalidBucket { start: 4, end: 0 })
+        );
 
         // 10 points, 3 partitions
         // Should split as: 4, 3, 3
-        assert_eq!(partition_boundaries(10, 3, 0), (0, 3));
-        assert_eq!(partition_boundaries(10, 3, 1), (3, 6));
-        assert_eq!(partition_boundaries(10, 3, 2), (6, 10));
+        assert_eq!(partition_bounds_by_count(0, 10, 3), Ok(vec![0, 3, 6, 10]));
 
         // 5 points, 2 partitions: 3, 2
-        assert_eq!(partition_boundaries(5, 2, 0), (0, 2));
-        assert_eq!(partition_boundaries(5, 2, 1), (2, 5));
+        assert_eq!(partition_bounds_by_count(0, 5, 2), Ok(vec![0, 2, 5]));
 
         // 7 points, 7 partitions: all size 1
-        for i in 0..7 {
-            assert_eq!(partition_boundaries(7, 7, i), (i, i + 1));
-        }
+        assert_eq!(
+            partition_bounds_by_count(0, 7, 7),
+            Ok(vec![0, 1, 2, 3, 4, 5, 6, 7])
+        );
     }
 
     #[test]
     fn minmax_preselect_preserves_extrema() {
-        // Data with clear peaks, valleys, and intermediate points
+        // Data with peaks, valleys, and intermediate points
         let data = vec![
             Point::new(0.0, 0.0),  // first
             Point::new(0.5, 2.0),  // bucket 1 - valley
@@ -653,8 +756,8 @@ mod tests {
             Point::new(3.5, 4.0),  // bucket 3 - intermediate
             Point::new(4.0, 0.0),  // last
         ];
-        // n_out = 5, ratio = 2 (so only a single partition per bucket)
-        let selected = preselect_extrema(&data, 5, 2);
+        // n_out = 5, ratio = 2 (global partitions over inner range)
+        let selected = extrema_selection(&data, 5, 2).unwrap();
         // For this configuration, the expected output is:
         // - First and last points are always included
         // - (0.5, 2.0) and (1.0, 10.0) are included because they are extrema in the first bucket
@@ -668,6 +771,7 @@ mod tests {
             Point::new(2.0, -5.0),
             Point::new(2.5, 0.0),
             Point::new(3.0, 8.0),
+            Point::new(3.5, 4.0),
             Point::new(4.0, 0.0),
         ];
         assert_eq!(selected, expected);
@@ -682,7 +786,7 @@ mod tests {
             Point::new(2.0, 1.0),
             Point::new(3.0, 1.0),
         ];
-        let selected = preselect_extrema(&data, 3, 2);
+        let selected = extrema_selection(&data, 3, 2).unwrap();
         // Should include first and last
         assert_eq!(selected[0], data[0]);
         assert_eq!(selected[selected.len() - 1], data[3]);
@@ -694,31 +798,61 @@ mod tests {
     fn minmax_preselect_small_buckets() {
         // Fewer points than n_out
         let data = vec![Point::new(0.0, 1.0), Point::new(1.0, 2.0)];
-        let selected = preselect_extrema(&data, 5, 2);
+        let selected = extrema_selection(&data, 5, 2);
         // Should just return the original data
-        assert_eq!(selected, data);
+        assert_eq!(
+            selected,
+            Err(LttbError::InvalidThreshold { n_in: 2, n_out: 5 })
+        );
     }
 
     #[test]
-    fn minmaxlttb_early_return() {
-        let points = vec![Point::new(0.0, 1.0), Point::new(1.0, 2.0)];
+    fn minmax_preselect_invalid_inputs() {
+        let points = vec![
+            Point::new(0.0, 1.0),
+            Point::new(1.0, 2.0),
+            Point::new(2.0, 3.0),
+            Point::new(3.0, 4.0),
+        ];
         // n_out <= 2
-        assert_eq!(minmaxlttb(&points, 2, 2), points);
+        assert_eq!(
+            minmaxlttb(&points, 2, 2),
+            Err(LttbError::InvalidThreshold {
+                n_in: points.len(),
+                n_out: 2
+            })
+        );
+        assert_eq!(
+            extrema_selection(&points, 2, 2),
+            Err(LttbError::InvalidThreshold {
+                n_in: points.len(),
+                n_out: 2
+            })
+        );
         // n_out >= points.len()
-        assert_eq!(minmaxlttb(&points, 3, 2), points);
+        assert_eq!(
+            minmaxlttb(&points, 4, 2),
+            Err(LttbError::InvalidThreshold {
+                n_in: points.len(),
+                n_out: 4
+            })
+        );
+        assert_eq!(
+            extrema_selection(&points, 4, 2),
+            Err(LttbError::InvalidThreshold {
+                n_in: points.len(),
+                n_out: 4
+            })
+        );
         // ratio < 2
-        assert_eq!(minmaxlttb(&points, 2, 1), points);
-    }
-
-    #[test]
-    fn minmax_preselect_early_return() {
-        let points = vec![Point::new(0.0, 1.0), Point::new(1.0, 2.0)];
-        // n_out <= 2
-        assert_eq!(preselect_extrema(&points, 2, 2), points);
-        // n_out >= points.len()
-        assert_eq!(preselect_extrema(&points, 3, 2), points);
-        // ratio < 2
-        assert_eq!(preselect_extrema(&points, 2, 1), points);
+        assert_eq!(
+            minmaxlttb(&points, 3, 1),
+            Err(LttbError::InvalidRatio { ratio: 1 })
+        );
+        assert_eq!(
+            extrema_selection(&points, 3, 1),
+            Err(LttbError::InvalidRatio { ratio: 1 })
+        );
     }
 
     #[test]
@@ -729,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn downsample_standard_check() {
+    fn downsample_classic_lttb_check() {
         let points = vec![
             Point::new(0.0, 1.0),
             Point::new(1.0, 2.0),
@@ -737,7 +871,7 @@ mod tests {
             Point::new(3.0, 4.0),
             Point::new(4.0, 5.0),
         ];
-        let result = lttb(&points, 3);
+        let result = lttb(&points, 3, BinnigMethod::Count).unwrap();
         assert_eq!(result.len(), 3);
     }
 
@@ -750,7 +884,7 @@ mod tests {
             Point::new(3.0, 4.0),
             Point::new(4.0, 5.0),
         ];
-        let result = minmaxlttb(&points, 3, 2);
+        let result = minmaxlttb(&points, 3, 2).unwrap();
         assert_eq!(result.len(), 3);
     }
 
@@ -764,12 +898,12 @@ mod tests {
             Point::new(4.0, 5.0),
         ];
 
-        // Test builder pattern with standard LTTB
-        let result_standard = LttbBuilder::new()
+        // Test builder pattern with classic LTTB
+        let result_classic = LttbBuilder::new()
             .threshold(3)
-            .method(LttbMethod::Standard)
+            .method(LttbMethod::Classic)
             .build();
-        assert_eq!(result_standard.downsample(&points).len(), 3);
+        assert_eq!(result_classic.downsample(&points).unwrap().len(), 3);
 
         // Test builder pattern with MinMaxLTTB and custom ratio
         let result_minmax = LttbBuilder::new()
@@ -777,13 +911,100 @@ mod tests {
             .method(LttbMethod::MinMax)
             .ratio(4)
             .build();
-        assert_eq!(result_minmax.downsample(&points).len(), 3);
+        assert_eq!(result_minmax.downsample(&points).unwrap().len(), 3);
 
         // Test builder pattern with MinMaxLTTB and default ratio
         let result_minmax_default = LttbBuilder::new()
             .threshold(3)
             .method(LttbMethod::MinMax)
             .build();
-        assert_eq!(result_minmax_default.downsample(&points).len(), 3);
+        assert_eq!(result_minmax_default.downsample(&points).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn bucket_limits_by_count_check() {
+        let bounds = buckets_limits_by_count(&[Point::default(); 6], 4);
+        let expected = vec![0, 1, 3, 5, 6];
+        assert_eq!(bounds.unwrap(), expected);
+
+        let bounds = buckets_limits_by_count(&[Point::default(); 6], 5);
+        let expected = vec![0, 1, 2, 3, 5, 6];
+        assert_eq!(bounds.unwrap(), expected);
+
+        let bounds = buckets_limits_by_count(&[Point::default(); 10], 5);
+        let expected = vec![0, 1, 3, 6, 9, 10];
+        assert_eq!(bounds.unwrap(), expected);
+
+        let bounds = buckets_limits_by_count(&[Point::default(); 15], 10);
+        let expected = vec![0, 1, 2, 4, 5, 7, 9, 10, 12, 14, 15];
+        assert_eq!(bounds.unwrap(), expected);
+    }
+
+    #[test]
+    fn bucket_limits_by_range_early_return_conditions() {
+        let data = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(2.0, 0.0),
+            Point::new(3.0, 0.0),
+        ];
+        // n_out >= n_in
+        assert_eq!(
+            bucket_limits_by_range(&data, 4),
+            Err(LttbError::InvalidThreshold { n_in: 4, n_out: 4 })
+        );
+        // n_out <= 2
+        assert_eq!(
+            bucket_limits_by_range(&data, 2),
+            Err(LttbError::InvalidThreshold { n_in: 4, n_out: 2 })
+        );
+    }
+
+    #[test]
+    fn bucket_limits_by_range_non_uniform_spacing() {
+        // Inner x-range is split in half; boundary falls between 0.2 and 5.0
+        let data = vec![
+            Point::new(0.0, 0.0), // first
+            Point::new(0.1, 0.0), // start of inner range
+            Point::new(0.2, 0.0),
+            Point::new(5.0, 0.0),
+            Point::new(5.1, 0.0),  // end of inner range
+            Point::new(10.0, 0.0), // last
+        ];
+        // start = 0.1, end = 5.1, inner width = (5.1 - 0.1)/2 = 2.5
+        // boundary1 = 3 → first point >= 0.1 + 2.5 is 5.0 at idx 3
+        // boundary2 = 5 → last point, but bucket_limits_by_range already pushes n_in-1 and n_in at end
+        let bounds = bucket_limits_by_range(&data, 4).unwrap();
+        let expected = vec![0, 1, 3, 5, 6];
+        assert_eq!(bounds, expected);
+    }
+
+    #[test]
+    fn bucket_limits_by_range_negative_x_and_offset() {
+        // Check correctness with negative x
+        let data = vec![
+            Point::new(-5.0, 0.0), // first
+            Point::new(-4.5, 0.0), // start of inner range
+            Point::new(-4.0, 0.0),
+            Point::new(-1.0, 0.0),
+            Point::new(3.0, 0.0),  // end of inner range
+            Point::new(10.0, 0.0), // last
+        ];
+        // start = -4.5, end = 10.0, inner width = (3.0 - (-4.5))/2 = 3.75
+        // boundary1 = 4 → first idx >= -4.5 + 3.75 is -0.75 at idx 4
+        // boundary2 = 5 → last point, but bucket_limits_by_range already pushes n_in-1 and n_in at end
+        let bounds = bucket_limits_by_range(&data, 4).unwrap();
+        let expected = vec![0, 1, 4, 5, 6];
+        assert_eq!(bounds, expected);
+    }
+
+    #[test]
+    fn bucket_limits_by_range_matches_count_when_uniform() {
+        // Uniform x-spacing → range buckets should equal count buckets
+        let data: Vec<Point> = (0..=10).map(|i| Point::new(i as f64, 0.0)).collect();
+        let n_out = 6;
+        let by_range = bucket_limits_by_range(&data, n_out).unwrap();
+        let by_count = buckets_limits_by_count(&data, n_out).unwrap();
+        assert_eq!(by_range, by_count);
     }
 }

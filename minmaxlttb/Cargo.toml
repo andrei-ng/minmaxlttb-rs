@@ -13,3 +13,7 @@ criterion = "0.7"
 [[bench]]
 name = "lttb_bench"
 harness = false
+
+[[bench]]
+name = "scale_benches"
+harness = false

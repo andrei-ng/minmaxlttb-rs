@@ -1,5 +1,5 @@
 use minmaxlttb::{LttbBuilder, Point};
-use plotly::{Layout, Plot, Scatter};
+use plotly::{Configuration, Layout, Plot, Scatter};
 use std::error::Error;
 use std::fs::File;
 
@@ -16,7 +16,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let downsampled = LttbBuilder::new()
             .threshold(threshold)
             .build()
-            .downsample(&original_data);
+            .downsample(&original_data)
+            .unwrap();
         println!(
             "LTTB (threshold = {}): downsampled = {} points",
             threshold,
@@ -71,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 ]),
         );
     plot.set_layout(layout);
-    // plot.set_configuration(Configuration::default().responsive(true).fill_frame(true));
+    plot.set_configuration(Configuration::default().responsive(true));
 
     let out_dir = "./output";
     std::fs::create_dir_all(out_dir).unwrap();

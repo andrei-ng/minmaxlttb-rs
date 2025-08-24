@@ -24,8 +24,8 @@ fn to_datapoints(points: &[Point]) -> Vec<DataPoint> {
 fn compare_lttb_rs_crate() {
     const EPS_TOL: f64 = 1e-8;
 
-    let n = 1000;
-    let threshold = 100;
+    let n = 10_000;
+    let threshold = 1_000;
     let series = generate_random_series(n);
 
     let local_impl = local_lttb(&series, threshold, BinnigMethod::Count).unwrap();
@@ -57,7 +57,6 @@ fn compare_lttb_rs_crate() {
         "end point has different y values"
     );
 
-    // Check all points
     for (our_p, their_p) in local_impl.iter().zip(external_impl) {
         assert_eq!(our_p.x(), their_p.x);
         assert_eq!(our_p.y(), their_p.y);

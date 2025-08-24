@@ -5,6 +5,7 @@ members = [
     "examples/timeseries",
     "examples/minmax_vs_standard",
     "examples/lttb_analysis",
+    "upstream-compare",
 ]
 exclude = ["target/*"]
 

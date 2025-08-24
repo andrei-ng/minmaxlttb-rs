@@ -1,6 +1,6 @@
 use csv::ReaderBuilder;
 use minmaxlttb::{LttbBuilder, Point};
-use plotly::{Layout, Plot, Scatter};
+use plotly::{Configuration, Layout, Plot, Scatter};
 use std::error::Error;
 
 const DATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/timeseries.csv");
@@ -23,27 +23,31 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let standard = LttbBuilder::new()
         .threshold(threshold)
-        .method(minmaxlttb::LttbMethod::Standard)
+        .method(minmaxlttb::LttbMethod::Classic)
         .build()
-        .downsample(&data.clone());
+        .downsample(&data.clone())
+        .unwrap();
     let minmax_ratio_2 = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::MinMax)
         .ratio(2)
         .build()
-        .downsample(&data.clone());
+        .downsample(&data.clone())
+        .unwrap();
     let minmax_ratio_8 = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::MinMax)
         .ratio(8)
         .build()
-        .downsample(&data.clone());
+        .downsample(&data.clone())
+        .unwrap();
     let minmax_ratio_16 = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::MinMax)
         .ratio(16)
         .build()
-        .downsample(&data);
+        .downsample(&data)
+        .unwrap();
 
     println!("Original points: {}", data.len());
     println!("Standard LTTB: {} points", standard.len());
@@ -101,6 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .x_axis(plotly::layout::Axis::new().title(plotly::common::Title::with_text("Time")))
         .y_axis(plotly::layout::Axis::new().title(plotly::common::Title::with_text("Value")));
     plot.set_layout(layout);
+    plot.set_configuration(Configuration::default().responsive(true));
 
     let out_dir = "output";
     std::fs::create_dir_all(out_dir)?;
