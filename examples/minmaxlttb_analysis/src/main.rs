@@ -1,7 +1,8 @@
-use clap::Parser;
+use clap::builder::BoolishValueParser;
+use clap::{ArgAction, Parser};
 use csv::ReaderBuilder;
 use minmaxlttb::{LttbBuilder, Point};
-use plotly::{Layout, Plot, Scatter};
+use plotly::{common::DashType, Configuration, Layout, Plot, Scatter};
 use std::error::Error;
 
 const DATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/timeseries.csv");
@@ -13,31 +14,42 @@ struct Args {
     #[arg(short, long, default_value_t = 4)]
     ratio: usize,
 
+    /// Downsampling threshold (number of output points)
+    #[arg(short = 't', long, default_value_t = 500)]
+    threshold: usize,
+
     /// Show bucket boundaries
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = ArgAction::Set, value_parser = BoolishValueParser::new())]
     show_buckets: bool,
 
     /// Show partition boundaries
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = ArgAction::Set, value_parser = BoolishValueParser::new())]
     show_partitions: bool,
 
     /// Show next vertices (mean points of next buckets)
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = ArgAction::Set, value_parser = BoolishValueParser::new())]
     show_next_vertices: bool,
 
     /// Show min/max points from partitions
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = ArgAction::Set, value_parser = BoolishValueParser::new())]
     show_min_max: bool,
 
     /// Show final selected points
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = ArgAction::Set, value_parser = BoolishValueParser::new())]
     show_selected: bool,
 }
 
 // Helper function to get next vertices (mean points of next buckets) for visualization
-fn get_last_vertices(points: &[Point], n_out: usize) -> Vec<Point> {
-    (1..n_out - 1)
-        .filter_map(|i| minmaxlttb::third_vertex(points, n_out, i))
+fn compute_next_vertices(points: &[Point], n_out: usize) -> Vec<Point> {
+    let edges = minmaxlttb::bucket_limits_by_count(points, n_out).unwrap();
+    if edges.len() < 3 {
+        return Vec::new();
+    }
+    (1..=n_out - 2)
+        .filter_map(|i| {
+            let (ns, ne) = (edges[i + 1], edges[i + 2]);
+            minmaxlttb::mean_point_bucket(&points[ns..ne])
+        })
         .collect()
 }
 
@@ -62,48 +74,86 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let data = load_timeseries_data(DATA_PATH)?;
-    let threshold = 500;
+    let threshold = args.threshold;
 
-    let standard = LttbBuilder::new()
+    let classic = LttbBuilder::new()
         .threshold(threshold)
-        .method(minmaxlttb::LttbMethod::Standard)
+        .method(minmaxlttb::LttbMethod::Classic)
         .build()
-        .downsample(&data.clone());
+        .downsample(&data)
+        .unwrap();
     let minmax = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::MinMax)
         .ratio(args.ratio)
         .build()
-        .downsample(&data);
+        .downsample(&data)
+        .unwrap();
 
     println!("Original points: {}", data.len());
-    println!("Standard LTTB: {} points", standard.len());
+    println!("Classic LTTB: {} points", classic.len());
     println!(
         "MinMax LTTB (ratio={}): {} points",
         args.ratio,
         minmax.len()
     );
 
-    // Get next vertices for visualization
-    let last_vertices = get_last_vertices(&data, threshold);
-    println!("next vertices: {} points", last_vertices.len());
+    let bucket_size = data.len() / threshold;
+    let used_preselection = bucket_size > args.ratio;
+    if used_preselection {
+        println!(
+            "MinMax preselection: ACTIVE\n\t n_in={}\n\t threshold={}\n\t bucket_size={} > ratio={}",
+            data.len(),
+            threshold,
+            bucket_size,
+            args.ratio
+        );
+    } else {
+        println!(
+            "MinMax preselection: NON-ACTIVE\n\t n_in={}\n\t threshold={}\n\t bucket_size={} <= ratio={}",
+            data.len(),
+            threshold,
+            bucket_size,
+            args.ratio
+        );
+    }
+    let analysis_points: Vec<Point> = if used_preselection {
+        minmaxlttb::extrema_selection(&data, threshold, args.ratio)?
+    } else {
+        data.clone()
+    };
+    // Compute global partition bounds only if preselection is used (for visualization only)
+    let (num_partitions, global_partition_bounds): (usize, Option<Vec<usize>>) =
+        if used_preselection {
+            let np = threshold.saturating_mul(args.ratio / 2);
+            let gb = minmaxlttb::partition_bounds_by_range(&data[1..(data.len() - 1)], 1, np)?;
+            (np, Some(gb))
+        } else {
+            (0, None)
+        };
+
+    // Get next vertices for visualization (based on count-buckets over the points used by LTTB)
+    let last_vertices = compute_next_vertices(&analysis_points, threshold);
 
     let mut plot = Plot::new();
     let x_orig: Vec<f64> = data.iter().map(|p| p.x()).collect();
     let y_orig: Vec<f64> = data.iter().map(|p| p.y()).collect();
     plot.add_trace(
-        Scatter::new(x_orig, y_orig)
-            .name("Original")
-            .line(plotly::common::Line::new().color("lightgray").width(1.5)),
+        Scatter::new(x_orig, y_orig).name("Original").line(
+            plotly::common::Line::new()
+                .color("black")
+                .width(1.5)
+                .dash(DashType::Dash),
+        ),
     );
 
-    // Standard LTTB
-    let x_std: Vec<f64> = standard.iter().map(|p| p.x()).collect();
-    let y_std: Vec<f64> = standard.iter().map(|p| p.y()).collect();
+    // Classic LTTB (original)
+    let x_std: Vec<f64> = classic.iter().map(|p| p.x()).collect();
+    let y_std: Vec<f64> = classic.iter().map(|p| p.y()).collect();
     plot.add_trace(
         Scatter::new(x_std, y_std)
-            .name("Standard LTTB")
-            .line(plotly::common::Line::new().color("blue").width(2.0)),
+            .name("Classic LTTB")
+            .line(plotly::common::Line::new().color("blue").width(1.5)),
     );
 
     // MinMax LTTB
@@ -112,44 +162,33 @@ fn main() -> Result<(), Box<dyn Error>> {
     plot.add_trace(
         Scatter::new(x_mm, y_mm)
             .name(format!("MinMax LTTB (ratio={})", args.ratio))
-            .line(plotly::common::Line::new().color("red").width(2.0)),
+            .line(plotly::common::Line::new().color("red").width(1.5)),
     );
 
-    if args.show_min_max {
-        // Get min/max points from partitions for visualization
-        let minmax_points = minmaxlttb::preselect_extrema(&data, threshold, args.ratio);
-        println!(
-            "Min/Max points from partitions: {} points",
-            minmax_points.len()
-        );
-
-        // Separate min and max points from partitions
+    if args.show_min_max && used_preselection {
+        // Get min/max points from all range partitions (inner span), mirroring MinMax preselection
         let mut min_points = Vec::new();
         let mut max_points = Vec::new();
 
-        // Get min/max points from partitions for visualization
-        for bucket_idx in 1..threshold - 1 {
-            let (bucket_start, bucket_end) =
-                minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
-            let num_partitions = args.ratio / 2;
-            for partition_idx in 0..num_partitions {
-                let (s, e) = minmaxlttb::partition_boundaries(
-                    bucket_end - bucket_start,
-                    num_partitions,
-                    partition_idx,
-                );
-                let start = bucket_start + s;
-                let end = bucket_start + e;
-                if end - start > 1 {
-                    let (min_p, max_p) = minmaxlttb::minmax_partition(&data[start..end]);
-                    min_points.push(min_p);
-                    max_points.push(max_p);
-                } else if end - start == 1 {
-                    min_points.push(data[start]);
-                    max_points.push(data[start]);
-                }
+        let bounds = global_partition_bounds
+            .as_ref()
+            .expect("bounds present when used_preselection");
+        for i_p in 0..num_partitions {
+            let start = bounds[i_p];
+            let end = bounds[i_p + 1];
+            let minmax = minmaxlttb::find_minmax(&data[start..end]);
+            if minmax.len() == 1 {
+                min_points.push(minmax[0]);
+                max_points.push(minmax[0]);
+            } else {
+                min_points.push(minmax[0]);
+                max_points.push(minmax[1]);
             }
         }
+        println!(
+            "Min/Max points from partitions: {} points",
+            min_points.len() + max_points.len()
+        );
 
         // Min points from partitions
         let x_min: Vec<f64> = min_points.iter().map(|p| p.x()).collect();
@@ -194,10 +233,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         if args.show_buckets {
             let mut x_bucket_lines: Vec<f64> = Vec::new();
             let mut y_bucket_lines: Vec<f64> = Vec::new();
+            let edges = minmaxlttb::bucket_limits_by_count(&analysis_points, threshold)?;
             for bucket_idx in 1..threshold - 1 {
-                let (bucket_start, _bucket_end) =
-                    minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
-                let x_bucket_start = data[bucket_start].x();
+                let (bucket_start, _bucket_end) = (edges[bucket_idx], edges[bucket_idx + 1]);
+                let x_bucket_start = analysis_points[bucket_start].x();
                 x_bucket_lines.push(x_bucket_start);
                 x_bucket_lines.push(x_bucket_start);
                 x_bucket_lines.push(f64::NAN);
@@ -223,31 +262,23 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        // Aggregate all partition boundary vertical lines into a single trace
-        if args.show_partitions {
+        // Aggregate all partition boundary vertical lines into a single trace (range partitions)
+        if args.show_partitions && used_preselection {
             let mut x_partition_lines: Vec<f64> = Vec::new();
             let mut y_partition_lines: Vec<f64> = Vec::new();
-            for bucket_idx in 1..threshold - 1 {
-                let (bucket_start, bucket_end) =
-                    minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
-                let num_partitions = args.ratio / 2;
-                for partition_idx in 0..num_partitions {
-                    let (s, e) = minmaxlttb::partition_boundaries(
-                        bucket_end - bucket_start,
-                        num_partitions,
-                        partition_idx,
-                    );
-                    let start = bucket_start + s;
-                    let end = bucket_start + e;
-                    if start < data.len() && end <= data.len() {
-                        let x_partition_start = data[start].x();
-                        x_partition_lines.push(x_partition_start);
-                        x_partition_lines.push(x_partition_start);
-                        x_partition_lines.push(f64::NAN);
-                        y_partition_lines.push(y_min);
-                        y_partition_lines.push(y_max);
-                        y_partition_lines.push(f64::NAN);
-                    }
+            // Draw inner boundaries only (skip the very first and last which coincide with endpoints)
+            let bounds = global_partition_bounds
+                .as_ref()
+                .expect("bounds present when used_preselection");
+            for &b in bounds.iter().take(num_partitions).skip(1) {
+                if b < data.len() {
+                    let x_partition_start = data[b].x();
+                    x_partition_lines.push(x_partition_start);
+                    x_partition_lines.push(x_partition_start);
+                    x_partition_lines.push(f64::NAN);
+                    y_partition_lines.push(y_min);
+                    y_partition_lines.push(y_max);
+                    y_partition_lines.push(f64::NAN);
                 }
             }
             if !x_partition_lines.is_empty() {
@@ -312,7 +343,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let layout = Layout::new()
         .title(plotly::common::Title::with_text(format!(
-            "LTTB vs MinMaxLTTB (ratio={}) with Bucket/Partition Boundaries and Next Vertices",
+            "MinMaxLTTB (ratio={}) with Bucket/Partition Boundaries and Next Vertices",
             args.ratio
         )))
         .height(900)
@@ -320,10 +351,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .x_axis(plotly::layout::Axis::new().title(plotly::common::Title::with_text("Time")))
         .y_axis(plotly::layout::Axis::new().title(plotly::common::Title::with_text("Value")));
     plot.set_layout(layout);
+    plot.set_configuration(Configuration::default().responsive(true));
 
     let out_dir = "output";
     std::fs::create_dir_all(out_dir)?;
-    let out_path = format!("{out_dir}/lttb_analysis.html");
+    let out_path = format!("{out_dir}/minmaxlttb_analysis.html");
     plot.write_html(&out_path);
     println!("Plot saved to {out_path}");
     plot.show_html(out_path);

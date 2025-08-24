@@ -16,16 +16,38 @@ env:
 
 jobs:
   build:
-    name: Build&Test
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
-        run: cargo test && cargo build
+        run: cargo build --all
 
-  test:
+  unittests:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: minmaxlttb tests
+        run: cargo test -p minmaxlttb
+      - name: minmaxlttb benches check
+        run: cargo bench -p minmaxlttb --no-run
+
+  crosscheck-tests:
+    name: Compare tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: crosscheck tests
+        run: cargo +nightly test -p crosscheck
+      - name: crosscheck benches check
+        run: cargo +nightly bench -p crosscheck --no-run
+
+  coverage:
     name: Coverage
     runs-on: ubuntu-latest
     container:
@@ -36,4 +58,14 @@ jobs:
         uses: actions/checkout@v4
       - name: Generate code coverage
         run: |
-          cargo +nightly tarpaulin --all-features --workspace --timeout 120 --out xml
+          cargo +nightly tarpaulin  --workspace --timeout 120 --out xml
+
+  doc-build:
+    name: Doc build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo doc --no-deps -p minmaxlttb

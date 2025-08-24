@@ -1,0 +1,35 @@
+[package]
+name = "crosscheck"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+minmaxlttb = { path = "../minmaxlttb" }
+rand = "0.9"
+plotly = "0.13"
+csv = "1"
+
+[dev-dependencies]
+downsample_rs = { git = "https://github.com/predict-idlab/tsdownsample", package = "downsample_rs", rev = "v0.1.4.1" }
+lttb = "0.2"
+criterion = { version = "0.7" }
+
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "compare_tsdownsample"
+path = "examples/compare_tsdownsample.rs"
+
+[[bench]]
+name = "lttb_bench"
+harness = false
+
+[[bench]]
+name = "minmaxlttb_bench"
+harness = false

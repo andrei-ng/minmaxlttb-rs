@@ -1,9 +1,0 @@
-[package]
-name = "example_minmax_vs_standard"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-minmaxlttb = { path = "../../minmaxlttb" }
-csv = "1"
-plotly = "0.13" 

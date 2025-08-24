@@ -3,7 +3,7 @@ use csv::ReaderBuilder;
 use csv::StringRecord;
 use minmaxlttb::{LttbBuilder, Point};
 use num_format::{Locale, ToFormattedString};
-use plotly::{Layout, Plot, Scatter};
+use plotly::{common::DashType, Configuration, Layout, Plot, Scatter};
 use rayon::prelude::*;
 use std::error::Error;
 use std::fs::File;
@@ -38,7 +38,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             .threshold(threshold)
             .ratio(8)
             .build()
-            .downsample(&original_data);
+            .downsample(&original_data)
+            .unwrap();
         let elapsed = t0.elapsed();
         println!(
             "LTTB (threshold={}): original={} points,downsampled={} points, runtime {:.3?}",
@@ -56,7 +57,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let original_viz = LttbBuilder::new()
         .threshold(500000)
         .build()
-        .downsample(&original_data);
+        .downsample(&original_data)
+        .unwrap();
     let x_orig: Vec<f64> = original_viz.iter().map(|p| p.x()).collect();
     let y_orig: Vec<f64> = original_viz.iter().map(|p| p.y()).collect();
 
@@ -64,7 +66,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         Scatter::new(x_orig, y_orig)
             .web_gl_mode(true)
             .name("Power Data (downsampled to 500k points)")
-            .line(plotly::common::Line::new().color("lightgray").width(1.2)),
+            .line(
+                plotly::common::Line::new()
+                    .color("lightgray")
+                    .width(1.5)
+                    .dash(DashType::Dash),
+            ),
     );
 
     // Add downsampled traces with different colors
@@ -76,7 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         plot.add_trace(
             Scatter::new(x, y)
                 .name(format!("MinMaxLTTB ({threshold}, ratio=8)"))
-                .line(plotly::common::Line::new().color(colors[i]).width(2.0)),
+                .line(plotly::common::Line::new().color(colors[i]).width(1.5)),
         );
     }
 
@@ -96,7 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 original_viz.iter().map(|p| p.y()).fold(f64::NEG_INFINITY, f64::max) * 1.05
             ]));
     plot.set_layout(layout);
-    // plot.set_configuration(Configuration::default().responsive(true).fill_frame(true));
+    plot.set_configuration(Configuration::default().responsive(true));
 
     let out_dir = "./output";
     std::fs::create_dir_all(out_dir).unwrap();
