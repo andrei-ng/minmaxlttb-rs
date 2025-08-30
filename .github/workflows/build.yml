@@ -16,16 +16,38 @@ env:
 
 jobs:
   build:
-    name: Build&Test
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
-        run: cargo test && cargo build
+        run: cargo build --all
 
   test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: minmaxlttb tests
+        run: cargo test -p minmaxlttb
+      - name: minmaxlttb benches check
+        run: cargo bench -p minmaxlttb --no-run
+
+  compare-tests:
+    name: Compare tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: upstream-compare tests
+        run: cargo +nightly test -p upstream-compare
+      - name: upstream-compare benches check
+        run: cargo +nightly bench -p upstream-compare --no-run
+
+  coverage:
     name: Coverage
     runs-on: ubuntu-latest
     container:
