@@ -1,5 +1,5 @@
 [package]
-name = "example_power"
+name = "example_minmax_vs_classic"
 version.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -9,10 +9,5 @@ repository.workspace = true
 
 [dependencies]
 minmaxlttb = { path = "../../minmaxlttb" }
-csv = "1.3"
-chrono = "0.4"
-num-format = "0.4"
+csv = "1"
 plotly = "0.13"
-rayon = "1.10"
-reqwest = { version = "0.12", features = ["blocking"] }
-zip = "4.3"

@@ -1,7 +1,7 @@
 use clap::Parser;
 use csv::ReaderBuilder;
 use minmaxlttb::{LttbBuilder, Point};
-use plotly::{Layout, Plot, Scatter};
+use plotly::{Configuration, Layout, Plot, Scatter};
 use std::error::Error;
 
 const DATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/timeseries.csv");
@@ -35,9 +35,16 @@ struct Args {
 }
 
 // Helper function to get next vertices (mean points of next buckets) for visualization
-fn get_last_vertices(points: &[Point], n_out: usize) -> Vec<Point> {
-    (1..n_out - 1)
-        .filter_map(|i| minmaxlttb::third_vertex(points, n_out, i))
+fn build_edges_vec(points: &[Point], n_out: usize) -> Vec<Point> {
+    let edges = minmaxlttb::bucket_limits_by_range(points, n_out).unwrap();
+    if edges.len() < 3 {
+        return Vec::new();
+    }
+    (1..=n_out - 2)
+        .filter_map(|i| {
+            let (ns, ne) = (edges[i + 1], edges[i + 2]);
+            minmaxlttb::mean_point_bucket(&points[ns..ne])
+        })
         .collect()
 }
 
@@ -64,20 +71,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     let data = load_timeseries_data(DATA_PATH)?;
     let threshold = 500;
 
-    let standard = LttbBuilder::new()
+    let classic = LttbBuilder::new()
         .threshold(threshold)
-        .method(minmaxlttb::LttbMethod::Standard)
+        .method(minmaxlttb::LttbMethod::Classic)
         .build()
-        .downsample(&data.clone());
+        .downsample(&data.clone())
+        .unwrap();
     let minmax = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::MinMax)
         .ratio(args.ratio)
         .build()
-        .downsample(&data);
+        .downsample(&data)
+        .unwrap();
 
     println!("Original points: {}", data.len());
-    println!("Standard LTTB: {} points", standard.len());
+    println!("Classic LTTB: {} points", classic.len());
     println!(
         "MinMax LTTB (ratio={}): {} points",
         args.ratio,
@@ -85,7 +94,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
 
     // Get next vertices for visualization
-    let last_vertices = get_last_vertices(&data, threshold);
+    let last_vertices = build_edges_vec(&data, threshold);
     println!("next vertices: {} points", last_vertices.len());
 
     let mut plot = Plot::new();
@@ -97,12 +106,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .line(plotly::common::Line::new().color("lightgray").width(1.5)),
     );
 
-    // Standard LTTB
-    let x_std: Vec<f64> = standard.iter().map(|p| p.x()).collect();
-    let y_std: Vec<f64> = standard.iter().map(|p| p.y()).collect();
+    // Classic LTTB
+    let x_std: Vec<f64> = classic.iter().map(|p| p.x()).collect();
+    let y_std: Vec<f64> = classic.iter().map(|p| p.y()).collect();
     plot.add_trace(
         Scatter::new(x_std, y_std)
-            .name("Standard LTTB")
+            .name("Classic LTTB")
             .line(plotly::common::Line::new().color("blue").width(2.0)),
     );
 
@@ -117,39 +126,37 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if args.show_min_max {
         // Get min/max points from partitions for visualization
-        let minmax_points = minmaxlttb::preselect_extrema(&data, threshold, args.ratio);
-        println!(
-            "Min/Max points from partitions: {} points",
-            minmax_points.len()
-        );
-
         // Separate min and max points from partitions
         let mut min_points = Vec::new();
         let mut max_points = Vec::new();
 
+        let num_partitions = args.ratio / 2;
         // Get min/max points from partitions for visualization
         for bucket_idx in 1..threshold - 1 {
-            let (bucket_start, bucket_end) =
-                minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
-            let num_partitions = args.ratio / 2;
-            for partition_idx in 0..num_partitions {
-                let (s, e) = minmaxlttb::partition_boundaries(
-                    bucket_end - bucket_start,
-                    num_partitions,
-                    partition_idx,
-                );
-                let start = bucket_start + s;
-                let end = bucket_start + e;
-                if end - start > 1 {
-                    let (min_p, max_p) = minmaxlttb::minmax_partition(&data[start..end]);
-                    min_points.push(min_p);
-                    max_points.push(max_p);
-                } else if end - start == 1 {
-                    min_points.push(data[start]);
-                    max_points.push(data[start]);
+            let edges = minmaxlttb::bucket_limits_by_range(&data, threshold)?;
+            let (bucket_start, bucket_end) = (edges[bucket_idx], edges[bucket_idx + 1]);
+            let partition_bounds = minmaxlttb::partition_bounds_by_range(
+                &data[bucket_start..bucket_end],
+                bucket_start,
+                num_partitions,
+            )?;
+            for i_p in 0..num_partitions {
+                let start = partition_bounds[i_p];
+                let end = partition_bounds[i_p + 1];
+                let minmax = minmaxlttb::find_minmax(&data[start..end]);
+                if minmax.len() == 1 {
+                    min_points.push(minmax[0]);
+                    max_points.push(minmax[0]);
+                } else {
+                    min_points.push(minmax[0]);
+                    max_points.push(minmax[1]);
                 }
             }
         }
+        println!(
+            "Min/Max points from partitions: {} points",
+            min_points.len() + max_points.len()
+        );
 
         // Min points from partitions
         let x_min: Vec<f64> = min_points.iter().map(|p| p.x()).collect();
@@ -195,8 +202,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut x_bucket_lines: Vec<f64> = Vec::new();
             let mut y_bucket_lines: Vec<f64> = Vec::new();
             for bucket_idx in 1..threshold - 1 {
-                let (bucket_start, _bucket_end) =
-                    minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
+                let edges = minmaxlttb::bucket_limits_by_count(&data, threshold)?;
+                let (bucket_start, _bucket_end) = (edges[bucket_idx], edges[bucket_idx + 1]);
                 let x_bucket_start = data[bucket_start].x();
                 x_bucket_lines.push(x_bucket_start);
                 x_bucket_lines.push(x_bucket_start);
@@ -228,17 +235,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut x_partition_lines: Vec<f64> = Vec::new();
             let mut y_partition_lines: Vec<f64> = Vec::new();
             for bucket_idx in 1..threshold - 1 {
-                let (bucket_start, bucket_end) =
-                    minmaxlttb::bucket_boundaries(data.len(), threshold, bucket_idx);
+                let edges = minmaxlttb::bucket_limits_by_count(&data, threshold)?;
+                let (bucket_start, bucket_end) = (edges[bucket_idx], edges[bucket_idx + 1]);
                 let num_partitions = args.ratio / 2;
+                let partition_bounds = minmaxlttb::partition_bounds_by_count(
+                    bucket_start,
+                    bucket_end,
+                    num_partitions,
+                )?;
                 for partition_idx in 0..num_partitions {
-                    let (s, e) = minmaxlttb::partition_boundaries(
-                        bucket_end - bucket_start,
-                        num_partitions,
-                        partition_idx,
-                    );
-                    let start = bucket_start + s;
-                    let end = bucket_start + e;
+                    let start = bucket_start + partition_bounds[partition_idx];
+                    let end = bucket_start + partition_bounds[partition_idx + 1];
                     if start < data.len() && end <= data.len() {
                         let x_partition_start = data[start].x();
                         x_partition_lines.push(x_partition_start);
@@ -320,6 +327,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .x_axis(plotly::layout::Axis::new().title(plotly::common::Title::with_text("Time")))
         .y_axis(plotly::layout::Axis::new().title(plotly::common::Title::with_text("Value")));
     plot.set_layout(layout);
+    plot.set_configuration(Configuration::default().responsive(true));
 
     let out_dir = "output";
     std::fs::create_dir_all(out_dir)?;
