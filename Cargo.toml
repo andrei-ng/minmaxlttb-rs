@@ -20,12 +20,12 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Andrei Gherghescu andrei-ng@protonmail.com"]
 description = "MinMax Largest Triangle Three Buckets"
-homepage = "https://github.com/andrei-ng/minmaxlttb"
+homepage = "https://github.com/andrei-ng/minmaxlttb-rs"
 documentation = "https://docs.rs/minmaxlttb"
-repository = "https://github.com/andrei-ng/minmaxlttb"
+repository = "https://github.com/andrei-ng/minmaxlttb-rs"
 keywords = ["lttb", "downsampling", "visualization", "timeseries"]
 categories = ["algorithms", "visualization", "science"]
 edition = "2021"

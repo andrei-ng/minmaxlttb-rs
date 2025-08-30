@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/minmaxlttb.svg)](https://crates.io/crates/minmaxlttb)
 [![Docs.rs](https://docs.rs/minmaxlttb/badge.svg)](https://docs.rs/minmaxlttb)
-[![CI](https://github.com/andrei-ng/minmaxlttb/actions/workflows/build.yml/badge.svg)](https://github.com/andrei-ng/minmaxlttb/actions/workflows/build.yml)
+[![CI](https://github.com/andrei-ng/minmaxlttb-rs/actions/workflows/build.yml/badge.svg)](https://github.com/andrei-ng/minmaxlttb-rs/actions/workflows/build.yml)
 
 A Rust crate for downsampling timeseries data using the LTTB (Largest Triangle Three Buckets) and MinMaxLTTB algorithms.
 
@@ -30,7 +30,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minmaxlttb = "0.1.0"
+minmaxlttb = "0.1"
 ```
 
 ```rust
