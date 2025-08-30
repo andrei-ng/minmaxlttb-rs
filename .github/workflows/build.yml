@@ -25,7 +25,7 @@ jobs:
       - name: Build
         run: cargo build --all
 
-  test:
+  unittests:
     name: Test
     runs-on: ubuntu-latest
     steps:
@@ -36,7 +36,7 @@ jobs:
       - name: minmaxlttb benches check
         run: cargo bench -p minmaxlttb --no-run
 
-  compare-tests:
+  crosscheck-tests:
     name: Compare tests
     runs-on: ubuntu-latest
     steps:

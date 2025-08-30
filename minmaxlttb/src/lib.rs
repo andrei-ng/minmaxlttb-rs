@@ -1,22 +1,22 @@
 //! # MinMaxLTTB - MinMax Largest Triangle Three Buckets
 //!
 //! This crate provides implementations of the LTTB (Largest Triangle Three Buckets) and MinMaxLTTB algorithm
-//! for downsampling time series data for visualization purposes.
+//! for downsampling timeseries data for visualization purposes.
 //!
 //! ## Variants
 //!
 //! - **Classic LTTB**: Classic implementation of LTTB downsampling using buckets with equal number of points
-//! - **Standard LTTB**: Standard implementation of LTTB downsampling using buckets with equal x-axis range number of points
-//! - **MinMax LTTB**: MinMax variant that better preserves local minima and maxima
+//! - **Standard LTTB**: Alternative implementation of classic LTTB downsampling using buckets with equal x-axis range
+//! - **MinMax LTTB**: MinMax variant that preserves local minima and maxima and is more computationally efficient
 //!
 //! ## Usage
 //!
 //! ```rust
-//! use minmaxlttb::{Point, Lttb, LttbBuilder, LttbMethod, BinnigMethod};
+//! use minmaxlttb::{Point, Lttb, LttbBuilder, LttbMethod, Binning};
 //!
 //! // Simple usage with convenience functions
 //! let points = vec![Point::new(0.0, 1.0), Point::new(1.0, 2.0), Point::new(2.0, 3.0)];
-//! let downsampled = minmaxlttb::lttb(&points, 2, BinnigMethod::Count);
+//! let downsampled = minmaxlttb::lttb(&points, 2, Binning::ByCount);
 //!
 //! // Advanced usage with builder pattern
 //! let lttb = LttbBuilder::new()
@@ -33,7 +33,7 @@
 //!
 //! let lttb = LttbBuilder::new()
 //!     .threshold(1)
-//!     .method(LttbMethod::Standard)
+//!     .method(LttbMethod::Classic)
 //!     .build();
 //!
 //! let result1 = lttb.downsample(&dataset1);
@@ -93,12 +93,12 @@ impl Point {
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub enum LttbMethod {
     /// Classic LTTB algorithm as described in the original paper
-    /// where the the bucket size is based on counting the number of points required, i.e., `BinningMethod::Count`.
+    /// where the bucket size is based on counting the number of points required, i.e., `Binning::ByCount`.
     /// [Downsampling Time Series for Visual Representation](https://skemman.is/bitstream/1946/15343/3/SS_MSthesis.pdf)
     Classic,
 
     /// Standard LTTB algorithm improves upon the classic algorithm by using
-    /// buckets that have equal x-axis range number of points, i.e., `BinningMethod::Range`.
+    /// buckets that have equal x-axis range, i.e., `Binning::ByRange`.
     Standard,
 
     /// MinMax LTTB algorithm as described in the original paper
@@ -110,12 +110,12 @@ pub enum LttbMethod {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
-pub enum BinnigMethod {
+pub enum Binning {
     /// Equal number of points in each bucket
     #[default]
-    Count,
+    ByCount,
     /// Equal x-axis range in each bucket
-    Range,
+    ByRange,
 }
 
 /// Builder for configuring LTTB downsampling parameters with MinMax LTTB as default
@@ -187,8 +187,8 @@ impl Lttb {
     pub fn downsample(&self, points: &[Point]) -> Result<Vec<Point>> {
         match self.method {
             LttbMethod::MinMax => minmaxlttb(points, self.threshold, self.ratio),
-            LttbMethod::Classic => lttb(points, self.threshold, BinnigMethod::Count),
-            LttbMethod::Standard => lttb(points, self.threshold, BinnigMethod::Range),
+            LttbMethod::Classic => lttb(points, self.threshold, Binning::ByCount),
+            LttbMethod::Standard => lttb(points, self.threshold, Binning::ByRange),
         }
     }
 }
@@ -203,7 +203,7 @@ impl Lttb {
 //
 /// Note: Select `ratio` with care. When `ratio` approaches the bucket size (`points.len()/n_out`),
 /// partitions shrink to 1–2 points. This causes all points in a bucket to be selected,
-/// making MinMax equivalent to standard LTTB and render the maxima/minima preselection step void.
+/// making MinMax equivalent to Classic LTTB and render the maxima/minima preselection step void.
 pub fn minmaxlttb(points: &[Point], n_out: usize, ratio: usize) -> Result<Vec<Point>> {
     debug_assert!(
         points.windows(2).all(|w| w[0].x() <= w[1].x()),
@@ -224,18 +224,18 @@ pub fn minmaxlttb(points: &[Point], n_out: usize, ratio: usize) -> Result<Vec<Po
     let bucket_size = points.len() / n_out;
     if bucket_size > ratio {
         let selected = extrema_selection(points, n_out, ratio)?;
-        lttb(&selected, n_out, BinnigMethod::Count)
+        lttb(&selected, n_out, Binning::ByCount)
     } else {
-        lttb(points, n_out, BinnigMethod::Count)
+        lttb(points, n_out, Binning::ByCount)
     }
 }
 
-/// Downsample using the LTTB algorithm with a given binnig method.
+/// Downsample using the LTTB algorithm with a given binning method.
 ///
 /// `points` is the original set of points to downsample
 /// `n_out` is the number of points to downsample to (also known as the threshold)
-/// `binning_method` is the method to use for binning the points, see `BinnigMethod` for more details
-pub fn lttb(points: &[Point], n_out: usize, binning_method: BinnigMethod) -> Result<Vec<Point>> {
+/// `binning_method` is the method to use for binning the points, see `Binning` for more details
+pub fn lttb(points: &[Point], n_out: usize, binning_method: Binning) -> Result<Vec<Point>> {
     debug_assert!(
         points.windows(2).all(|w| w[0].x() <= w[1].x()),
         "points must be sorted by x"
@@ -248,8 +248,8 @@ pub fn lttb(points: &[Point], n_out: usize, binning_method: BinnigMethod) -> Res
     }
 
     let bucket_bounds = match binning_method {
-        BinnigMethod::Count => buckets_limits_by_count(points, n_out)?,
-        BinnigMethod::Range => bucket_limits_by_range(points, n_out)?,
+        Binning::ByCount => bucket_limits_by_count(points, n_out)?,
+        Binning::ByRange => bucket_limits_by_range(points, n_out)?,
     };
 
     let mut downsampled = Vec::with_capacity(n_out);
@@ -385,7 +385,7 @@ pub fn find_minmax(points: &[Point]) -> Vec<Point> {
 ///
 /// The first bucket is always the first point in the original data.
 /// The last bucket is always the last point in the original data.
-pub fn buckets_limits_by_count(points: &[Point], n_out: usize) -> Result<Vec<usize>> {
+pub fn bucket_limits_by_count(points: &[Point], n_out: usize) -> Result<Vec<usize>> {
     let n_in = points.len();
     if n_out >= n_in || n_out < 3 {
         return Err(LttbError::InvalidThreshold { n_in, n_out });
@@ -539,7 +539,7 @@ mod tests {
     #[inline(always)]
     /// Helper method to get the edges of a bucket given an index
     fn bucket_edges_by_count(data: &[Point], n_out: usize, bucket_index: usize) -> (usize, usize) {
-        let bucket_bounds = buckets_limits_by_count(data, n_out).unwrap();
+        let bucket_bounds = bucket_limits_by_count(data, n_out).unwrap();
         (bucket_bounds[bucket_index], bucket_bounds[bucket_index + 1])
     }
 
@@ -552,14 +552,14 @@ mod tests {
             Point::new(3.0, 3.0),
         ];
         let n_out = 5;
-        let result = lttb(&data, n_out, BinnigMethod::Count);
+        let result = lttb(&data, n_out, Binning::ByCount);
         assert_eq!(
             result,
             Err(LttbError::InvalidThreshold { n_in: 4, n_out: 5 })
         );
 
         let n_out = 2;
-        let result = lttb(&data, n_out, BinnigMethod::Count);
+        let result = lttb(&data, n_out, Binning::ByCount);
         assert_eq!(
             result,
             Err(LttbError::InvalidThreshold { n_in: 4, n_out: 2 })
@@ -875,7 +875,7 @@ mod tests {
             Point::new(3.0, 4.0),
             Point::new(4.0, 5.0),
         ];
-        let result = lttb(&points, 3, BinnigMethod::Count).unwrap();
+        let result = lttb(&points, 3, Binning::ByCount).unwrap();
         assert_eq!(result.len(), 3);
     }
 
@@ -923,27 +923,27 @@ mod tests {
     #[test]
     fn bucket_limits_by_count_check() {
         // Invalid inputs
-        let bounds = buckets_limits_by_count(&[Point::default(); 6], 2);
+        let bounds = bucket_limits_by_count(&[Point::default(); 6], 2);
         let expected = Err(LttbError::InvalidThreshold { n_in: 6, n_out: 2 });
         assert_eq!(bounds, expected);
 
-        let bounds = buckets_limits_by_count(&[Point::default(); 6], 6);
+        let bounds = bucket_limits_by_count(&[Point::default(); 6], 6);
         let expected = Err(LttbError::InvalidThreshold { n_in: 6, n_out: 6 });
         assert_eq!(bounds, expected);
 
-        let bounds = buckets_limits_by_count(&[Point::default(); 6], 4);
+        let bounds = bucket_limits_by_count(&[Point::default(); 6], 4);
         let expected = vec![0, 1, 3, 5, 6];
         assert_eq!(bounds.unwrap(), expected);
 
-        let bounds = buckets_limits_by_count(&[Point::default(); 6], 5);
+        let bounds = bucket_limits_by_count(&[Point::default(); 6], 5);
         let expected = vec![0, 1, 2, 3, 5, 6];
         assert_eq!(bounds.unwrap(), expected);
 
-        let bounds = buckets_limits_by_count(&[Point::default(); 10], 5);
+        let bounds = bucket_limits_by_count(&[Point::default(); 10], 5);
         let expected = vec![0, 1, 3, 6, 9, 10];
         assert_eq!(bounds.unwrap(), expected);
 
-        let bounds = buckets_limits_by_count(&[Point::default(); 15], 10);
+        let bounds = bucket_limits_by_count(&[Point::default(); 15], 10);
         let expected = vec![0, 1, 2, 4, 5, 7, 9, 10, 12, 14, 15];
         assert_eq!(bounds.unwrap(), expected);
     }
@@ -1012,7 +1012,7 @@ mod tests {
         let data: Vec<Point> = (0..=10).map(|i| Point::new(i as f64, 0.0)).collect();
         let n_out = 6;
         let by_range = bucket_limits_by_range(&data, n_out).unwrap();
-        let by_count = buckets_limits_by_count(&data, n_out).unwrap();
+        let by_count = bucket_limits_by_count(&data, n_out).unwrap();
         assert_eq!(by_range, by_count);
     }
 

@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use lttb as external_lttb;
-use minmaxlttb::{BinnigMethod, Point, lttb as local_lttb};
+use minmaxlttb::{Binning, Point, lttb as local_lttb};
 use std::hint::black_box;
 
 fn generate_data(n: usize) -> Vec<Point> {
@@ -15,7 +15,7 @@ fn bench_lttb(c: &mut Criterion) {
 
     c.bench_function("lttb (local)", |b| {
         b.iter(|| {
-            let _ = local_lttb(black_box(&data), black_box(threshold), BinnigMethod::Count);
+            let _ = local_lttb(black_box(&data), black_box(threshold), Binning::ByCount);
         })
     });
 

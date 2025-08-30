@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let data = load_timeseries_data(DATA_PATH)?;
     let threshold = 500;
 
-    let standard = LttbBuilder::new()
+    let classic = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::Classic)
         .build()
@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
 
     println!("Original points: {}", data.len());
-    println!("Standard LTTB: {} points", standard.len());
+    println!("Classic LTTB: {} points", classic.len());
     println!(
         "MinMax LTTB (ratio={}): {} points",
         args.ratio,
@@ -106,12 +106,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .line(plotly::common::Line::new().color("lightgray").width(1.5)),
     );
 
-    // Standard LTTB
-    let x_std: Vec<f64> = standard.iter().map(|p| p.x()).collect();
-    let y_std: Vec<f64> = standard.iter().map(|p| p.y()).collect();
+    // Classic LTTB
+    let x_std: Vec<f64> = classic.iter().map(|p| p.x()).collect();
+    let y_std: Vec<f64> = classic.iter().map(|p| p.y()).collect();
     plot.add_trace(
         Scatter::new(x_std, y_std)
-            .name("Standard LTTB")
+            .name("Classic LTTB")
             .line(plotly::common::Line::new().color("blue").width(2.0)),
     );
 
@@ -202,7 +202,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut x_bucket_lines: Vec<f64> = Vec::new();
             let mut y_bucket_lines: Vec<f64> = Vec::new();
             for bucket_idx in 1..threshold - 1 {
-                let edges = minmaxlttb::buckets_limits_by_count(&data, threshold)?;
+                let edges = minmaxlttb::bucket_limits_by_count(&data, threshold)?;
                 let (bucket_start, _bucket_end) = (edges[bucket_idx], edges[bucket_idx + 1]);
                 let x_bucket_start = data[bucket_start].x();
                 x_bucket_lines.push(x_bucket_start);
@@ -235,7 +235,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut x_partition_lines: Vec<f64> = Vec::new();
             let mut y_partition_lines: Vec<f64> = Vec::new();
             for bucket_idx in 1..threshold - 1 {
-                let edges = minmaxlttb::buckets_limits_by_count(&data, threshold)?;
+                let edges = minmaxlttb::bucket_limits_by_count(&data, threshold)?;
                 let (bucket_start, bucket_end) = (edges[bucket_idx], edges[bucket_idx + 1]);
                 let num_partitions = args.ratio / 2;
                 let partition_bounds = minmaxlttb::partition_bounds_by_count(

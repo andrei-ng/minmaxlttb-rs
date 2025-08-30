@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let data = load_timeseries_data(DATA_PATH)?;
     let threshold = 500;
 
-    let standard = LttbBuilder::new()
+    let classic = LttbBuilder::new()
         .threshold(threshold)
         .method(minmaxlttb::LttbMethod::Classic)
         .build()
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
 
     println!("Original points: {}", data.len());
-    println!("Standard LTTB: {} points", standard.len());
+    println!("Classic LTTB: {} points", classic.len());
     println!("MinMax LTTB (ratio=2): {} points", minmax_ratio_2.len());
     println!("MinMax LTTB (ratio=8): {} points", minmax_ratio_8.len());
     println!("MinMax LTTB (ratio=16): {} points", minmax_ratio_16.len());
@@ -64,11 +64,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             .line(plotly::common::Line::new().color("lightgray").width(1.2)),
     );
 
-    let x_std: Vec<f64> = standard.iter().map(|p| p.x()).collect();
-    let y_std: Vec<f64> = standard.iter().map(|p| p.y()).collect();
+    let x_std: Vec<f64> = classic.iter().map(|p| p.x()).collect();
+    let y_std: Vec<f64> = classic.iter().map(|p| p.y()).collect();
     plot.add_trace(
         Scatter::new(x_std, y_std)
-            .name("Standard LTTB")
+            .name("Classic LTTB")
             .line(plotly::common::Line::new().color("blue").width(2.0)),
     );
 
@@ -109,7 +109,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let out_dir = "output";
     std::fs::create_dir_all(out_dir)?;
-    let out_path = format!("{out_dir}/compare_minmax_vs_standard.html");
+    let out_path = format!("{out_dir}/compare_minmax_vs_classic.html");
     plot.write_html(&out_path);
     println!("Plot saved to {out_path}");
     plot.show_html(out_path);

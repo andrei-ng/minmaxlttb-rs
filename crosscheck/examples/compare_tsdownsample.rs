@@ -42,7 +42,7 @@ fn main() {
     let ours_minmax = sampler.downsample(&series).expect("minmaxlttb");
 
     // Our LTTB (range buckets)
-    let ours_lttb = lttb_local(&series, threshold, minmaxlttb::BinnigMethod::Range).expect("lttb");
+    let ours_lttb = lttb_local(&series, threshold, minmaxlttb::Binning::ByRange).expect("lttb");
 
     // Upstream tsdownsample
     let x: Vec<f64> = series.iter().map(|p| p.x()).collect();

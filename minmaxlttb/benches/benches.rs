@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use minmaxlttb::{BinnigMethod, LttbBuilder, LttbMethod, Point, lttb as lttb_fn};
+use minmaxlttb::{Binning, LttbBuilder, LttbMethod, Point, lttb as lttb_fn};
 use std::hint::black_box;
 
 fn make_series(n: usize) -> Vec<Point> {
@@ -40,7 +40,7 @@ fn bench_lttb_50m(c: &mut Criterion) {
 
     c.bench_function("lttb_50M", |b| {
         b.iter(|| {
-            let _ = lttb_fn(black_box(&data), black_box(threshold), BinnigMethod::Range);
+            let _ = lttb_fn(black_box(&data), black_box(threshold), Binning::ByRange);
         })
     });
 }

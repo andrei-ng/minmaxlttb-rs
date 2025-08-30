@@ -1,5 +1,5 @@
 use lttb::{DataPoint, lttb as external_lttb};
-use minmaxlttb::{BinnigMethod, Point, lttb as local_lttb};
+use minmaxlttb::{Binning, Point, lttb as local_lttb};
 use rand::Rng;
 
 fn generate_random_series(n: usize) -> Vec<Point> {
@@ -28,7 +28,7 @@ fn compare_lttb_rs_crate() {
     let threshold = 1_000;
     let series = generate_random_series(n);
 
-    let local_impl = local_lttb(&series, threshold, BinnigMethod::Count).unwrap();
+    let local_impl = local_lttb(&series, threshold, Binning::ByCount).unwrap();
     let external_impl = external_lttb(to_datapoints(&series), threshold);
 
     assert_eq!(

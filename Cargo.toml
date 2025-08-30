@@ -3,8 +3,8 @@ members = [
     "minmaxlttb",
     "examples/power",
     "examples/timeseries",
-    "examples/minmax_vs_standard",
-    "examples/lttb_analysis",
+    "examples/minmax_vs_classic",
+    "examples/minmaxlttb_analysis",
     "crosscheck",
 ]
 exclude = ["target/*"]
@@ -15,15 +15,18 @@ default-members = [
     "minmaxlttb",
     "examples/power",
     "examples/timeseries",
-    "examples/minmax_vs_standard",
-    "examples/lttb_analysis",
+    "examples/minmax_vs_classic",
+    "examples/minmaxlttb_analysis",
 ]
 
 [workspace.package]
+version = "0.1.0"
 authors = ["Andrei Gherghescu andrei-ng@protonmail.com"]
 description = "Largest Triangle Three Buckets with MinMax"
 homepage = "https://github.com/andrei-ng/minmaxlttb"
+documentation = "https://crates.io/crates/minmaxlttb"
 repository = "https://github.com/andrei-ng/minmaxlttb"
-keywords = ["lttb", "minmax", "downsampling", "visualization", "timeseries"]
+keywords = ["lttb", "downsampling", "visualization", "timeseries"]
+categories = ["algorithms", "visualization", "science"]
 edition = "2024"
 license = "MIT"
