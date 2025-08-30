@@ -25,5 +25,5 @@ description = "Largest Triangle Three Buckets with MinMax"
 homepage = "https://github.com/andrei-ng/minmaxlttb"
 repository = "https://github.com/andrei-ng/minmaxlttb"
 keywords = ["lttb", "minmax", "downsampling", "visualization", "timeseries"]
-edition = "2021"
+edition = "2024"
 license = "MIT"

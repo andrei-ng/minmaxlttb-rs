@@ -58,4 +58,4 @@ jobs:
         uses: actions/checkout@v4
       - name: Generate code coverage
         run: |
-          cargo +nightly tarpaulin --all-features --workspace --timeout 120 --out xml
+          cargo +nightly tarpaulin  --workspace --timeout 120 --out xml

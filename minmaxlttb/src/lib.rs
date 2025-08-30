@@ -56,9 +56,11 @@ impl fmt::Display for LttbError {
         match self {
             LttbError::InvalidThreshold { n_in, n_out } => write!(
                 f,
-                "threshold n_out={n_out} must be in >= 2 and <= n_in={n_in}"
+                "threshold n_out={n_out} invalid. Must be 2 < n_out < n_in={n_in}"
             ),
-            LttbError::InvalidRatio { ratio } => write!(f, "ratio must be >= 2 (got {ratio})"),
+            LttbError::InvalidRatio { ratio } => {
+                write!(f, "ratio is invalid, Must be >= 2 (got {ratio})")
+            }
             LttbError::EmptyBucket => write!(f, "cannot partition an empty bucket"),
             LttbError::InvalidBucket { start, end } => {
                 write!(f, "computed invalid bucket limits at i={start}..={end}")
@@ -350,7 +352,7 @@ pub fn mean_point_bucket(points: &[Point]) -> Option<Point> {
 /// Returns `[min_p, max_p]` if the partition has more than 2 points
 pub fn find_minmax(points: &[Point]) -> Vec<Point> {
     let mut result = Vec::with_capacity(2);
-    if points.len() <= 2 {
+    if points.len() < 3 {
         return points.to_vec();
     }
 
@@ -385,7 +387,7 @@ pub fn find_minmax(points: &[Point]) -> Vec<Point> {
 /// The last bucket is always the last point in the original data.
 pub fn buckets_limits_by_count(points: &[Point], n_out: usize) -> Result<Vec<usize>> {
     let n_in = points.len();
-    if n_out >= n_in || n_out <= 2 {
+    if n_out >= n_in || n_out < 3 {
         return Err(LttbError::InvalidThreshold { n_in, n_out });
     }
 
@@ -444,7 +446,7 @@ pub fn partition_bounds_by_count(start: usize, end: usize, n: usize) -> Result<V
 /// The last bucket is always the last point in the original data.
 pub fn bucket_limits_by_range(points: &[Point], n_out: usize) -> Result<Vec<usize>> {
     let n_in = points.len();
-    if n_out >= n_in || n_out <= 2 {
+    if n_out >= n_in || n_out < 3 {
         return Err(LttbError::InvalidThreshold { n_in, n_out });
     }
 
@@ -728,6 +730,8 @@ mod tests {
             Err(LttbError::InvalidBucket { start: 4, end: 0 })
         );
 
+        assert_eq!(partition_bounds_by_count(4, 10, 0), Ok(vec![4, 10]));
+
         // 10 points, 3 partitions
         // Should split as: 4, 3, 3
         assert_eq!(partition_bounds_by_count(0, 10, 3), Ok(vec![0, 3, 6, 10]));
@@ -807,14 +811,14 @@ mod tests {
     }
 
     #[test]
-    fn minmax_preselect_invalid_inputs() {
+    fn minmaxlttb_invalid_inputs() {
         let points = vec![
             Point::new(0.0, 1.0),
             Point::new(1.0, 2.0),
             Point::new(2.0, 3.0),
             Point::new(3.0, 4.0),
         ];
-        // n_out <= 2
+        // n_out < 3
         assert_eq!(
             minmaxlttb(&points, 2, 2),
             Err(LttbError::InvalidThreshold {
@@ -876,19 +880,6 @@ mod tests {
     }
 
     #[test]
-    fn downsample_minmax_check() {
-        let points = vec![
-            Point::new(0.0, 1.0),
-            Point::new(1.0, 2.0),
-            Point::new(2.0, 3.0),
-            Point::new(3.0, 4.0),
-            Point::new(4.0, 5.0),
-        ];
-        let result = minmaxlttb(&points, 3, 2).unwrap();
-        assert_eq!(result.len(), 3);
-    }
-
-    #[test]
     fn builder_pattern() {
         let points = vec![
             Point::new(0.0, 1.0),
@@ -919,10 +910,27 @@ mod tests {
             .method(LttbMethod::MinMax)
             .build();
         assert_eq!(result_minmax_default.downsample(&points).unwrap().len(), 3);
+
+        let result_standard = LttbBuilder::new()
+            .threshold(3)
+            .method(LttbMethod::Standard)
+            .build()
+            .downsample(&points)
+            .unwrap();
+        assert_eq!(result_standard.len(), 3);
     }
 
     #[test]
     fn bucket_limits_by_count_check() {
+        // Invalid inputs
+        let bounds = buckets_limits_by_count(&[Point::default(); 6], 2);
+        let expected = Err(LttbError::InvalidThreshold { n_in: 6, n_out: 2 });
+        assert_eq!(bounds, expected);
+
+        let bounds = buckets_limits_by_count(&[Point::default(); 6], 6);
+        let expected = Err(LttbError::InvalidThreshold { n_in: 6, n_out: 6 });
+        assert_eq!(bounds, expected);
+
         let bounds = buckets_limits_by_count(&[Point::default(); 6], 4);
         let expected = vec![0, 1, 3, 5, 6];
         assert_eq!(bounds.unwrap(), expected);
@@ -953,7 +961,7 @@ mod tests {
             bucket_limits_by_range(&data, 4),
             Err(LttbError::InvalidThreshold { n_in: 4, n_out: 4 })
         );
-        // n_out <= 2
+        // n_out < 3
         assert_eq!(
             bucket_limits_by_range(&data, 2),
             Err(LttbError::InvalidThreshold { n_in: 4, n_out: 2 })
@@ -1006,5 +1014,71 @@ mod tests {
         let by_range = bucket_limits_by_range(&data, n_out).unwrap();
         let by_count = buckets_limits_by_count(&data, n_out).unwrap();
         assert_eq!(by_range, by_count);
+    }
+
+    #[test]
+    fn partition_bounds_by_range_edges() {
+        // n == 0 returns [start, start + len]
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(2.0, 0.0),
+        ];
+        assert_eq!(
+            partition_bounds_by_range(&points, 5, 0).unwrap(),
+            vec![5, 8]
+        );
+
+        // Empty points returns error
+        let empty: Vec<Point> = vec![];
+        assert_eq!(
+            partition_bounds_by_range(&empty, 0, 3),
+            Err(LttbError::EmptyBucket)
+        );
+    }
+    #[test]
+    fn downsample_minmax_check() {
+        let points = vec![
+            Point::new(0.0, 1.0),
+            Point::new(1.0, 2.0),
+            Point::new(2.0, 3.0),
+            Point::new(3.0, 4.0),
+            Point::new(4.0, 5.0),
+        ];
+        let result = minmaxlttb(&points, 3, 2).unwrap();
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn force_extrema_selection_branch() {
+        // Create enough points so bucket_size > ratio and extrema selection branch triggers
+        let points: Vec<Point> = (0..100)
+            .map(|i| Point::new(i as f64, (i % 7) as f64))
+            .collect();
+        let n_out = 10;
+        let ratio = 2; // bucket_size = 100/10 = 10 > 2 → triggers extremaSelection branch
+        let result = minmaxlttb(&points, n_out, ratio).unwrap();
+        assert_eq!(result.len(), n_out);
+    }
+
+    #[test]
+    fn lttberror_format() {
+        let e1 = LttbError::InvalidThreshold { n_in: 4, n_out: 5 };
+        assert_eq!(
+            format!("{}", e1),
+            "threshold n_out=5 invalid. Must be 2 < n_out < n_in=4"
+        );
+
+        let e2 = LttbError::InvalidRatio { ratio: 1 };
+        assert_eq!(format!("{}", e2), "ratio is invalid, Must be >= 2 (got 1)");
+
+        let e3 = LttbError::EmptyBucket;
+        assert_eq!(format!("{}", e3), "cannot partition an empty bucket");
+
+        let e4 = LttbError::InvalidBucket { start: 2, end: 1 };
+        assert_eq!(
+            format!("{}", e4),
+            "computed invalid bucket limits at i=2..=1"
+        );
     }
 }

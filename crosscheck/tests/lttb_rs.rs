@@ -1,5 +1,5 @@
-use lttb::{lttb as external_lttb, DataPoint};
-use minmaxlttb::{lttb as local_lttb, BinnigMethod, Point};
+use lttb::{DataPoint, lttb as external_lttb};
+use minmaxlttb::{BinnigMethod, Point, lttb as local_lttb};
 use rand::Rng;
 
 fn generate_random_series(n: usize) -> Vec<Point> {

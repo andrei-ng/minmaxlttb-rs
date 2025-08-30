@@ -1,6 +1,6 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use lttb as external_lttb;
-use minmaxlttb::{lttb as local_lttb, BinnigMethod, Point};
+use minmaxlttb::{BinnigMethod, Point, lttb as local_lttb};
 use std::hint::black_box;
 
 fn generate_data(n: usize) -> Vec<Point> {

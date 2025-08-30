@@ -1,5 +1,5 @@
 use csv::ReaderBuilder;
-use minmaxlttb::{lttb as lttb_local, LttbBuilder, LttbMethod, Point};
+use minmaxlttb::{LttbBuilder, LttbMethod, Point, lttb as lttb_local};
 use plotly::{Plot, Scatter};
 
 const DATA_PATH: &str = concat!(

@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use minmaxlttb::{minmaxlttb as local_minmaxlttb, Point};
+use criterion::{Criterion, criterion_group, criterion_main};
+use minmaxlttb::{Point, minmaxlttb as local_minmaxlttb};
 use std::hint::black_box;
 
 fn generate_data(n: usize) -> Vec<Point> {

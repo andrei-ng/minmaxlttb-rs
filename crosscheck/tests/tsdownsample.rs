@@ -1,5 +1,5 @@
-use minmaxlttb::{minmaxlttb, Point};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use minmaxlttb::{Point, minmaxlttb};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 
 fn generate_random_series(n: usize) -> Vec<Point> {
     let mut rng = StdRng::seed_from_u64(42);

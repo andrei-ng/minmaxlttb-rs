@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use minmaxlttb::{lttb as lttb_fn, BinnigMethod, LttbBuilder, LttbMethod, Point};
+use criterion::{Criterion, criterion_group, criterion_main};
+use minmaxlttb::{BinnigMethod, LttbBuilder, LttbMethod, Point, lttb as lttb_fn};
 use std::hint::black_box;
 
 fn make_series(n: usize) -> Vec<Point> {
