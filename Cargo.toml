@@ -11,6 +11,14 @@ exclude = ["target/*"]
 
 resolver = "2"
 
+default-members = [
+    "minmaxlttb",
+    "examples/power",
+    "examples/timeseries",
+    "examples/minmax_vs_standard",
+    "examples/lttb_analysis",
+]
+
 [workspace.package]
 authors = ["Andrei Gherghescu andrei-ng@protonmail.com"]
 description = "Largest Triangle Three Buckets with MinMax"

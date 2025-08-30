@@ -11,9 +11,5 @@ rand = "0.9"
 criterion = "0.7"
 
 [[bench]]
-name = "lttb_bench"
-harness = false
-
-[[bench]]
-name = "scale_benches"
+name = "benches"
 harness = false

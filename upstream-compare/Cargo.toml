@@ -19,3 +19,7 @@ path = "src/lib.rs"
 [[example]]
 name = "compare_tsdownsample"
 path = "examples/compare_tsdownsample.rs"
+
+[[bench]]
+name = "lttb_bench"
+harness = false
