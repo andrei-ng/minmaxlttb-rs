@@ -42,10 +42,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-      - name: upstream-compare tests
-        run: cargo +nightly test -p upstream-compare
-      - name: upstream-compare benches check
-        run: cargo +nightly bench -p upstream-compare --no-run
+      - name: crosscheck tests
+        run: cargo +nightly test -p crosscheck
+      - name: crosscheck benches check
+        run: cargo +nightly bench -p crosscheck --no-run
 
   coverage:
     name: Coverage
