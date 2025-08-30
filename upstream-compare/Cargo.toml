@@ -12,6 +12,8 @@ csv = "1"
 [dev-dependencies]
 downsample_rs = { git = "https://github.com/predict-idlab/tsdownsample", package = "downsample_rs", rev = "v0.1.4.1" }
 lttb = "0.2"
+criterion = { version = "0.7" }
+
 
 [lib]
 path = "src/lib.rs"
@@ -22,4 +24,8 @@ path = "examples/compare_tsdownsample.rs"
 
 [[bench]]
 name = "lttb_bench"
+harness = false
+
+[[bench]]
+name = "minmaxlttb_bench"
 harness = false

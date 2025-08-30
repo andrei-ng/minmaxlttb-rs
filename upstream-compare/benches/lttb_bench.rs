@@ -10,8 +10,8 @@ fn generate_data(n: usize) -> Vec<Point> {
 }
 
 fn bench_lttb(c: &mut Criterion) {
-    let data = generate_data(10_000);
-    let threshold = 500;
+    let data = generate_data(10_000_000);
+    let threshold = 20_000;
 
     c.bench_function("lttb (local)", |b| {
         b.iter(|| {
