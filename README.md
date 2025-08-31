@@ -109,11 +109,11 @@ cargo run -p example_timeseries -- --method minmax
 ```
 
 
-<img src="docs/assets/minmax_n5000_d100" alt="MinMaxLTTB threshold 100 on 5000 points" width="1100">
-<img src="docs/assets/minmax_n5000_d250" alt="MinMaxLTTB threshold 250 on 5000 points" width="1100">
-<img src="docs/assets/minmax_n5000_d500" alt="MinMaxLTTB threshold 500 on 5000 points" width="1100">
-<img src="docs/assets/minmax_n5000_d1000" alt="MinMaxLTTB threshold 1000 on 5000 points" width="1100">
-<img src="docs/assets/minmax_n5000_d2000" alt="MinMaxLTTB threshold 2000 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d100" alt="MinMaxLTTB threshold 100 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d250" alt="MinMaxLTTB threshold 250 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d500" alt="MinMaxLTTB threshold 500 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d1000" alt="MinMaxLTTB threshold 1000 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d2000" alt="MinMaxLTTB threshold 2000 on 5000 points" width="1100">
 
 ## License
 
