@@ -1,5 +1,5 @@
 [package]
-name = "example_lttb_analysis"
+name = "example_minmaxlttb_analysis"
 version.workspace = true
 license.workspace = true
 edition.workspace = true
