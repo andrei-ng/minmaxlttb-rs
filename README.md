@@ -72,33 +72,6 @@ let result1 = lttb.downsample(&dataset1).unwrap();
 let result2 = lttb.downsample(&dataset2).unwrap();
 ```
 
-## Examples
-
-Check the `examples` directory for examples that generate plots using the `plotly-rs` crate and are rendered in your system's default browser:
- - power: example of downsampling a real-world power consumption dataset with MinMaxLTTB
- - timeseries: example of downsampling a synthetic dataset with classic LTTB
- - minmax_vs_classic: comparison of LTTB and MinMaxLTTB downsampling
- - minmaxlttb_analysis: a visual analysis of the point selections and bucket/partition division for the MinMaxLTTB algorithm
-
-
-Run any of the examples by using one of the commands 
-```Bash
-cargo run -p example_timeseries --release
-```
-
-```Bash
-cargo run -p example_power --release
-``` 
-
-
-```Bash
-cargo run -p example_minmax_vs_classic --release
-``` 
-
-```Bash
-cargo run -p example_minmaxlttb_analysis --release -- --show-buckets=on --show-partitions=on --show-min-max=on --show-selected=on --show-next-vertices=on --ratio=4
-``` 
-
 ## Result of MinMaxLTTB on 5.000-point timeseries
 
 Below images show the effects of downsampling a 5.000-point timeseries with MinMaxLTTB with different thresholds.
@@ -109,12 +82,53 @@ cargo run -p example_timeseries -- --method minmax
 ```
 
 
-<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d100" alt="MinMaxLTTB threshold 100 on 5000 points" width="1100">
-<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d250" alt="MinMaxLTTB threshold 250 on 5000 points" width="1100">
-<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d500" alt="MinMaxLTTB threshold 500 on 5000 points" width="1100">
-<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d1000" alt="MinMaxLTTB threshold 1000 on 5000 points" width="1100">
-<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d2000" alt="MinMaxLTTB threshold 2000 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d100.png" alt="MinMaxLTTB threshold 100 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d250.png" alt="MinMaxLTTB threshold 250 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d500.png" alt="MinMaxLTTB threshold 500 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d1000.png" alt="MinMaxLTTB threshold 1000 on 5000 points" width="1100">
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/minmax_n5000_d2000.png" alt="MinMaxLTTB threshold 2000 on 5000 points" width="1100">
+
+## Examples
+
+Check the `examples` directory for examples that generate plots using the `plotly-rs` crate and are rendered in your system's default browser:
+ - power: example of downsampling a real-world power consumption dataset with MinMaxLTTB
+ - timeseries: example of downsampling a synthetic dataset with classic LTTB
+ - minmax_vs_classic: comparison of LTTB and MinMaxLTTB downsampling
+ - minmaxlttb_analysis: a visual analysis of the point selections and bucket/partition division for the MinMaxLTTB algorithm
+
+
+### Timeseries example
+
+```Bash
+cargo run -p example_timeseries --release
+```
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/timeseries-example.png" alt="Timeseries example" width="1100">
+
+### Powerdata series example
+
+```Bash
+cargo run -p example_power --release
+``` 
+The plot below is a zoom-in on a region of the plot to emphasize the differences   
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/powerseries-example.png" alt="Powerdata example" width="1100">
+
+### LTTB vs MinMaxLttb example
+
+```Bash
+cargo run -p example_minmax_vs_classic --release
+``` 
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main/docs/assets/lttb-vs-minmax-example.png" alt="MinMaxLTTB vs LTTB" width="1100">
+
+###  MinMaxLttb analysis example
+
+This example generates a plot that illustrates how the MinMaxLTTB algorithm selects points for each bucket, highlighting the next average point, the preselected points, partition boundaries, and bucket boundaries.
+
+```Bash
+cargo run -p example_minmaxlttb_analysis --release -- --show-buckets=on --show-partitions=on --show-min-max=on --show-selected=on --show-next-vertices=on --ratio=4
+``` 
+
+<img src="https://github.com/andrei-ng/minmaxlttb-rs/raw/main//docs/assets/minmaxlttb-analysis-example.png" alt="MinMaxLTTB analysis" width="1100">
 
 ## License
 
-MIT 
+MIT > --
