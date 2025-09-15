@@ -131,4 +131,4 @@ cargo run -p example_minmaxlttb_analysis --release -- --show-buckets=on --show-p
 
 ## License
 
-MIT > --
+MIT 
