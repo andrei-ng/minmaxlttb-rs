@@ -16,7 +16,7 @@ readme = "../README.md"
 [dev-dependencies]
 lttb = "0.2"
 rand = "0.9"
-criterion = "0.7"
+criterion = "0.8"
 
 [[bench]]
 name = "benches"
