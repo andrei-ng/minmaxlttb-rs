@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 minmaxlttb = { path = "../minmaxlttb" }
 rand = "0.9"
-plotly = "0.13"
+plotly = "0.14"
 csv = "1"
 
 [dev-dependencies]
