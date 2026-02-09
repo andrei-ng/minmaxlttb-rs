@@ -1,6 +1,6 @@
 use lttb::{lttb as external_lttb, DataPoint};
 use minmaxlttb::{lttb as local_lttb, Binning, Point};
-use rand::Rng;
+use rand::RngExt;
 
 fn generate_random_series(n: usize) -> Vec<Point> {
     let mut rng = rand::rng();
