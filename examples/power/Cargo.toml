@@ -15,4 +15,4 @@ num-format = "0.4"
 plotly = "0.14"
 rayon = "1.10"
 reqwest = { version = "0.13", features = ["blocking"] }
-zip = "7.0"
+zip = "8.0"
